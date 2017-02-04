@@ -5,7 +5,8 @@ from sklearn.metrics import accuracy_score
 from sklearn import preprocessing
 
 # custom
-import collector
+#import collector
+import collect_prices
 import features_calculator
 import fundamentals_processor
 
@@ -50,18 +51,8 @@ class StockPredictor():
 
     def _get_data(self, symbol, start_date=None, end_date=None, fundamentals=True):
         # get pricing data
-        c = collector.Collector()
-        data = np.array(c.get_historical_data(symbol, from_date=start_date, to_date=end_date))
-
-        df = pd.DataFrame(data, columns=c.col_names)
-
-        df.set_index(pd.DatetimeIndex(df['timestamp']), inplace=True)
-        df.drop('timestamp', axis=1, inplace=True)
-
-        for col in df.columns:
-            if col not in ('name',):
-                df[col] = df[col].astype('float64')
-        self.data = df
+        pm = collect_prices.PricingDataManager()
+        self.data = pm.load_stock(symbol)
 
         # get fundamentals
         if not fundamentals == True:

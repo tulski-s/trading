@@ -51,7 +51,7 @@ class Collector():
         #print(params)
 
         r = requests.get(url, params=params, headers=self.headers)
-        data = self._parse_historical_data(r.text)
+        data = self._parse_historical_data(r.text, full_name)
         return data
 
     def _get_companies(self):
@@ -73,14 +73,13 @@ class Collector():
             companies[entry['fullName']] = {'shortName':entry['shortName'], 'id':entry['entityId']}
         return companies
 
-    def _parse_historical_data(data, raw_xml):
+    def _parse_historical_data(data, raw_xml, full_name):
         xml_ = element_tree.fromstring(raw_xml)
         
         data = []
         plot = xml_.findall('plot')[0]
-        name = plot.get('assetName').strip()
         for node in plot.findall('data'):
-            row = [name, 
+            row = [full_name, 
                    node.get('timestamp').strip()[:-3],
                    float(node.get('open')),
                    float(node.get('high')),

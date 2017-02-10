@@ -4,6 +4,7 @@ import os
 import time
 
 # 3rd party
+import numpy as np
 import pandas as pd
 
 # custom
@@ -37,9 +38,7 @@ class PricingDataManager():
         for symbol in self.wig20_stocks:
             output_path = self._output_path(symbol)
             if os.path.exists(output_path):
-                df = pd.read_csv(output_path)
-                self._prepare_df(df)
-
+                df = self._load_from_csv(output_path)
                 stocks_data[symbol] = df
         return stocks_data
 
@@ -47,12 +46,19 @@ class PricingDataManager():
         # loads pricing data for given stock symbol to dataframe
         output_path = self._output_path(symbol)
         if os.path.exists(output_path):
-            df = pd.read_csv(output_path)
-            self._prepare_df(df)
+            df = self._load_from_csv(output_path)
             return df
 
     def _output_path(self, symbol):
         return os.path.join(self.pricing_data_path, '{}_pricing.csv'.format(symbol))
+
+    def _load_from_csv(self, path):
+        df = pd.read_csv(path)
+        # fill missing pirces (0.0) for sessions with previous valid value
+        df.replace(to_replace=0, value=np.nan, inplace=True)
+        df.fillna(method='ffill', inplace=True)
+        self._prepare_df(df)
+        return df
 
     def _prepare_df(self, df):
         df.set_index(pd.DatetimeIndex(df['timestamp']), inplace=True)
@@ -64,10 +70,10 @@ class PricingDataManager():
 
 def main():
     pm = PricingDataManager()
-    pm.collect()
+    #pm.collect()
     # data = pm.load_all()
-    # data = pm.load_stock('ENERGA')
-    # print(data)
+    data = pm.load_stock('LPP')
+    print(data.ix['2010-08-18'])
 
 if __name__ == '__main__':
     main()

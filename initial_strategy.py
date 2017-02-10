@@ -22,6 +22,7 @@ class Portfolio():
 
 class Trade():
     def __init__(self, symbol=None, date=None, price=None, atr=None, fee_perc=0.0038, min_fee_perc=5):
+        self.stock_symbol = symbol
         self.trade_id = '{} {}'.format(symbol, date)
         self.initial_price = price
         
@@ -56,13 +57,13 @@ class Trade():
 
     def buy(self, capital=None):
         self.shares_count = self._get_shares_count(capital=capital)
-        self.buy_fee = self._calculate_fee(price=self.initial_price)
+        self.buy_fee = round(self._calculate_fee(price=self.initial_price), 2)
 
     def set_init_stop(self, avg_atr=None, init_stop_const=3.4):
-        self.trailing_stop = self.initial_price - (avg_atr*init_stop_const) 
+        self.trailing_stop = round(self.initial_price - (avg_atr*init_stop_const), 2)
 
     def update_trailing_stop(self, price=None, avg_atr=None, stop_const=3.4):
-        stop_value = price - (avg_atr*stop_const)
+        stop_value = round(price - (avg_atr*stop_const), 2)
         if stop_value > self.trailing_stop:
             self.trailing_stop = stop_value
 
@@ -91,7 +92,7 @@ class Strategy():
         self.results = []# temporary solution for storing results. will change that with reporting object
         self.ref_results = []
 
-        self.data = self._prepare_data('BZWBK')
+        self.data = self._prepare_data('LPP')
         self.portfolio = Portfolio(available_capital=available_capital)
 
         self.setup_trades = {}
@@ -186,6 +187,7 @@ class Strategy():
             entry_signal = trade.check_if_entry(price=day_data['open'])
 
             if entry_signal == 1:
+                # ERROR HERE!!!! YOU'RE BUYING USING OUTDATED SETUP PRICE!
                 trade.buy(capital=self.portfolio.available_capital)
 
                 # as I'm not doing anything with trade later at acquiring day,

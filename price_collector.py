@@ -49,7 +49,11 @@ class PriceCollector():
             })
         url = 'https://www.bankier.pl/new-charts/get-data'
         r = requests.get(url, params=params)
-        r_json = json.loads(r.text)
+        try:
+            r_json = json.loads(r.text)
+        except json.decoder.JSONDecodeError:
+            print('Wrong response with data. Expected JSON, got:\n\n', r.text)
+            raise json.decoder.JSONDecodeError
         # ts: [open, max, min, close]
         prices = OrderedDict(
             (self._ts_to_date(row[0]), [float(row[1]), float(row[2]), float(row[3]), float(row[4])]) for row in r_json['main']
@@ -133,6 +137,7 @@ class PriceCollector():
 
 
 if __name__ == '__main__':
+    # small tests
     collector = PriceCollector()
     symbols = list(collector.get_stocks_symbols().keys())
 

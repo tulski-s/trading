@@ -8,7 +8,6 @@ import xml.etree.ElementTree as element_tree
 # 3rd party
 import requests
 import urllib
-from selenium import webdriver
 
 # custom
 import useragents
@@ -29,7 +28,7 @@ class PriceCollector():
             Both dates should be string with  format: %Y-%m-%d. If dates not specified, 
             from 1990-01-01 untillnow will be given.
 
-            Returns OrderedDict date as key and [open, high, close, low, volume] as value.
+            Returns OrderedDict date as key and [open, high, low, close, volume] as value.
         """
         params = {
             'symbol': symbol,

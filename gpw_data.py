@@ -15,7 +15,7 @@ class GPWData():
     def __init__(self, pricing_data_path='./pricing_data'):
         self.pricing_data_path = pricing_data_path
         self.collector = PriceCollector()
-        self.column_names = ['date', 'open', 'high', 'close', 'low', 'volume']
+        self.column_names = ['date', 'open', 'high', 'low', 'close', 'volume']
 
     def download_data_to_csv(self, symbols=None):
         """
@@ -37,7 +37,7 @@ class GPWData():
         Returns pricing data for *symbols*. It may be single symbol as a string or iterable with symbols.
         If *from_csv* is True it reads data from csv, else it gets it from the web. Currently it takes
         full history until execution.
-        Ouput is pandas DataFrame or list of lists with ['date','open','high','close','low','volume']
+        Ouput is pandas DataFrame or list of lists with ['date','open','high','low','close','volume']
         if only 1 symbol is provided. If more symbols requested then the output will be a dictionary with 
         symbol as a key and data with the same format as the one for single symbol.
         """
@@ -82,7 +82,7 @@ class GPWData():
 def main():
     gpw_data = GPWData()
     # WIG20 symbols
-    mock_symbols = [
+    wig20_symbols = [
         'ALIOR',
         'ASSECOPOL',
         'SANPL',
@@ -104,10 +104,15 @@ def main():
         'PZU',
         'TAURONPE'
     ]
-    # gpw_data.download_data_to_csv(symbols=mock_symbols)
-    # data = gpw_data.load(symbols='SANPL')
-    data = gpw_data.load(symbols=['SANPL', 'ALIOR'])
+    # gpw_data.download_data_to_csv(symbols=wig20_symbols)
+    data = gpw_data.load(symbols='SANPL')
+    # data = gpw_data.load(symbols=['SANPL', 'ALIOR'])
     print(data)
+
+    etfs_symbols = list(PriceCollector().get_etfs_symbols().keys())
+    gpw_data.download_data_to_csv(symbols=etfs_symbols)
+
+
 
 if __name__ == '__main__':
     main()

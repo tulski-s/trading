@@ -116,15 +116,15 @@ class Backtester():
             days = days[:test_days]
 
         for ds in days:
-            print('in {}, following symbols are available: {}'.format(str(ds), symbols_in_day[ds]))
+            # print('in {}, following symbols are available: {}'.format(str(ds), symbols_in_day[ds]))
 
             owned_shares = list(self._owned_shares.keys())
             for symbol in owned_shares:
                 if self.signals[symbol]['exit_long'][ds] == 1:
-                    print('exit long signal for: ', symbol)
+                    # print('exit long signal for: ', symbol)
                     self._sell(symbol, 'long', self.signals[symbol][self.price_label], ds)
                 elif self.signals[symbol]['exit_short'][ds] == 1:
-                    print('exit short signal for: ', symbol)
+                    # print('exit short signal for: ', symbol)
                     self._sell(symbol, 'short', self.signals[symbol][self.price_label], ds)
 
             purchease_candidates = []
@@ -134,7 +134,7 @@ class Backtester():
                 elif self.signals[sym]['entry_short'][ds] == 1:
                     purchease_candidates.append(self._define_candidate(sym, ds, 'short'))
 
-            print('     there are following candidates to buy: ', purchease_candidates)
+            # print('     there are following candidates to buy: ', purchease_candidates)
 
             symbols_to_buy = self.buying_decisions(purchease_candidates)
 
@@ -143,7 +143,7 @@ class Backtester():
 
             self._summarize_day(ds)
 
-            print('-> NAV after session({}) is : {}'.format(ds, self._net_account_value[ds]))
+            # print('-> NAV after session({}) is : {}'.format(ds, self._net_account_value[ds]))
 
         return self._run_output(), self._trades
 
@@ -169,7 +169,7 @@ class Backtester():
         price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
         fee = self.calculate_fee(shares_count*price)
-        print('          selling. fee is: ', fee)
+        # print('          selling. fee is: ', fee)
         trx_value = (shares_count*price)
         if exit_type == 'long':
             trx_value_gross = trx_value - fee
@@ -178,7 +178,7 @@ class Backtester():
         
         self._available_money += trx_value_gross
 
-        print('available money after sell: ', self._available_money)
+        # print('available money after sell: ', self._available_money)
         
         self._trades[self._owned_shares[symbol]['trx_id']].update({
             'sell_ds': ds,
@@ -210,12 +210,12 @@ class Backtester():
             'trx_value_gross': trx_value_gross,
         }
 
-        print('entered trade: [{}]. Details: {}. No. shares after trx: {}'.format(
-            trx_id,
-            self._trades[trx_id],
-            self._owned_shares[trx['symbol']],
-            )
-        )
+        # print('entered trade: [{}]. Details: {}. No. shares after trx: {}'.format(
+        #     trx_id,
+        #     self._trades[trx_id],
+        #     self._owned_shares[trx['symbol']],
+        #     )
+        # )
 
     def _define_candidate(self, symbol, ds, entry_type):
         """Reutrns dictionary with purchease candidates and necessery keys."""

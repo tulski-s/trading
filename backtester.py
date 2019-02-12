@@ -10,6 +10,7 @@ from gpw_data import GPWData
 
 
 def get_strategy_signals(symbol):
+    # TODO(2019-02-09) This strategy here is just for testing purposes... Will remove it soon.
     data = GPWData()
     etf_full = data.load(symbols=symbol)
 
@@ -133,10 +134,9 @@ class Backtester():
 
                 if self.signals[symbol]['exit_long'][ds] == 1:
                     log('exit long signal for: ', symbol)
-                    self._sell(symbol, 'long', self.signals[symbol][self.price_label], ds)
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     log('exit short signal for: ', symbol)
-                    self._sell(symbol, 'short', self.signals[symbol][self.price_label], ds)
+                self._sell(symbol, self.signals[symbol][self.price_label], ds)
 
             purchease_candidates = []
             for sym in symbols_in_day[ds]:
@@ -173,20 +173,15 @@ class Backtester():
         self._net_account_value = {}
         self._rate_of_return = {}
         self._backup_close_prices = {}
-        # I'll calcualte daily returns later. its easier when I have df as I;ll be able to just shift
-        # To find the return 𝑅(𝑡1,𝑡2) between dates 𝑡1 and 𝑡2 one takes 𝑅(𝑡1,𝑡2)=𝑁𝐴𝑉(𝑡2)/𝑁𝐴𝑉(𝑡1)−1
 
-    def _sell(self, symbol, exit_type, prices, ds):
+    def _sell(self, symbol, prices, ds):
         """Selling procedure"""
         price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
         fee = self.calculate_fee(shares_count*price)
         log('          selling. fee is: ', fee)
         trx_value = (shares_count*price)
-        if exit_type == 'long':
-            trx_value_gross = trx_value - fee
-        elif exit_type == 'short':
-            trx_value_gross = trx_value + fee
+        trx_value_gross = trx_value - fee
         
         self._available_money += trx_value_gross
 
@@ -245,9 +240,9 @@ class Backtester():
                 price = self.signals[symbol][self.price_label][ds]
             except KeyError:
                 # in case of missing ds in symbol take previous price value
-                # TODO(slaw): log here that there was missing date with status such that it shows even if DEBUG is off
                 price, price_ds = self._backup_close_prices[symbol]
-                print(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
+                # TODO(slaw): log here that there was missing date with status such that it shows even if DEBUG is off
+                log(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
                     price_ds, symbol, ds
                 ))
                 
@@ -278,7 +273,7 @@ class Backtester():
         return df
 
 
-def main():
+def run_test_strategy():
     sn1, sn2 = 'ETFW20L', 'ETFSP500'
     stock_1_test, stock_1_val = get_strategy_signals(sn1)
     stock_2_test, stock_2_val = get_strategy_signals(sn2)
@@ -297,7 +292,7 @@ def main():
     # results, trades = backtester.run(test_days=tdays)
     results, trades = backtester.run()
 
-    # print('\nFirst 5 results are: ', results.head(5))
+    # print('\nFirst 5 results are: \n', results.head(5))
 
     # log(pd.DataFrame(backtester.signals['ETFW20L']).head(5))
     # ttt = pd.DataFrame(backtester.signals['ETFW20L']).head(5)
@@ -305,8 +300,13 @@ def main():
     # xxx = pd.concat([ttt, edf], axis=1)
     # log(xxx)
 
+    return results, trades 
+
 
 def log(*args):
+    if 'LOG' not in globals():
+        # when imported LOG variable will not exists...
+        LOG = False
     if LOG == True:
         print(*args)
 
@@ -320,22 +320,16 @@ if __name__ == '__main__':
     else:
         LOG = True
     
-    main()
+    run_test_strategy()
 
 
 """
 TODOs
-- implement all the missing backtester.run components:
-    OK + buy
-    OK + sell
-    OK + summarize day
-    OK + test whole trading period
-    OK + "logging"
-
 - implement evaluation of the results (may be as a separate object)
 - test your previous strategy (if gives same results)
 - figure out how to change "buying_decisions" so that you can plug any logic to determine what and how much to buy
 - test you previous strategy based on different buying_decisions settings
++ better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)
 
 - clean code, enhence logging, write tests
     https://docs.python.org/3/howto/logging.html

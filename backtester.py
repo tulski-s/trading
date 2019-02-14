@@ -178,7 +178,7 @@ class Backtester():
         """Selling procedure"""
         price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
-        fee = self.calculate_fee(shares_count*price)
+        fee = self.calculate_fee(abs(shares_count)*price)
         log('          selling. fee is: ', fee)
         trx_value = (shares_count*price)
         trx_value_gross = trx_value - fee
@@ -278,11 +278,11 @@ def run_test_strategy():
     stock_1_test, stock_1_val = get_strategy_signals(sn1)
     stock_2_test, stock_2_val = get_strategy_signals(sn2)
 
-    tdays = 100
+    tdays = 1000
 
     signals = {
         sn1: stock_1_test,
-        sn2: stock_2_test,
+        # sn2: stock_2_test,
     }
 
     # print(signals['ETFW20L'].head(tdays))
@@ -325,8 +325,7 @@ if __name__ == '__main__':
 
 """
 TODOs
-- implement evaluation of the results (may be as a separate object)
-- test your previous strategy (if gives same results)
+- test your previous strategy (if evaluation results gives the same results)
 - figure out how to change "buying_decisions" so that you can plug any logic to determine what and how much to buy
 - test you previous strategy based on different buying_decisions settings
 + better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)

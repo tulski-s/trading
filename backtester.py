@@ -1,5 +1,6 @@
 # build-in
 import argparse
+import logging
 
 # 3rd party
 import numpy as np
@@ -7,6 +8,7 @@ import pandas as pd
 
 # custom
 from gpw_data import GPWData
+from commons import setup_logging
 
 
 def get_strategy_signals(symbol):
@@ -51,12 +53,14 @@ def get_strategy_signals(symbol):
             )
             etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
 
+    # print('na chwile: ', etf_t.head(5))
+
     return etf_t, etf_v
 
 
 
 class Backtester():
-    def __init__(self, signals, price_label='close', init_capital=10000):
+    def __init__(self, signals, price_label='close', init_capital=10000, logger=None):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
@@ -64,6 +68,7 @@ class Backtester():
 
         *price_label* - column name for the price which should be used in backtest
         """
+        self.log = setup_logging(logger)
         self.signals = self._prepare_signal(signals)
         self.price_label = price_label
         self.init_capital = init_capital
@@ -122,21 +127,23 @@ class Backtester():
             days = days[:test_days]
 
         for ds in days:
-            log('in {}, following symbols are available: {}'.format(str(ds), symbols_in_day[ds]))
+            self.log.debug('in {}, following symbols are available: {}'.format(str(ds), symbols_in_day[ds]))
             owned_shares = list(self._owned_shares.keys())
             for symbol in owned_shares:
 
                 # safe check if missing ds for given owned symbol
                 if not symbol in symbols_in_day[ds]:
                     continue
-                log('checking for sale symbol: {} from owned shares'.format(symbol))
-                log('_owned_shares val for given symbol: ', self._owned_shares[symbol])
+                self.log.debug('checking for sale symbol: {} from owned shares'.format(symbol))
+                self.log.debug('_owned_shares val for given symbol: ', self._owned_shares[symbol])
 
                 if self.signals[symbol]['exit_long'][ds] == 1:
-                    log('exit long signal for: ', symbol)
+                    self.log.debug('exit long signal for: ', symbol)
+                    self._sell(symbol, self.signals[symbol][self.price_label], ds)
                 elif self.signals[symbol]['exit_short'][ds] == 1:
-                    log('exit short signal for: ', symbol)
-                self._sell(symbol, self.signals[symbol][self.price_label], ds)
+                    self.log.debug('exit short signal for: ', symbol)
+                    self._sell(symbol, self.signals[symbol][self.price_label], ds)
+                
 
             purchease_candidates = []
             for sym in symbols_in_day[ds]:
@@ -145,7 +152,7 @@ class Backtester():
                 elif self.signals[sym]['entry_short'][ds] == 1:
                     purchease_candidates.append(self._define_candidate(sym, ds, 'short'))
 
-            log('     there are following candidates to buy: ', purchease_candidates)
+            self.log.debug('     there are following candidates to buy: ', purchease_candidates)
 
             symbols_to_buy = self.buying_decisions(purchease_candidates)
 
@@ -154,7 +161,7 @@ class Backtester():
 
             self._summarize_day(ds)
 
-            log('-> NAV after session({}) is : {}'.format(ds, self._net_account_value[ds]))
+            self.log.debug('-> NAV after session({}) is : {}'.format(ds, self._net_account_value[ds]))
 
         return self._run_output(), self._trades
 
@@ -179,13 +186,13 @@ class Backtester():
         price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
         fee = self.calculate_fee(abs(shares_count)*price)
-        log('          selling. fee is: ', fee)
+        self.log.debug('          selling. fee is: ', fee)
         trx_value = (shares_count*price)
         trx_value_gross = trx_value - fee
         
         self._available_money += trx_value_gross
 
-        log('available money after sell: ', self._available_money)
+        self.log.debug('available money after sell: ', self._available_money)
         
         self._trades[self._owned_shares[symbol]['trx_id']].update({
             'sell_ds': ds,
@@ -217,7 +224,7 @@ class Backtester():
             'trx_value_gross': trx_value_gross,
         }
 
-        log('entered trade: [{}]. Details: {}. No. shares after trx: {}'.format(
+        self.log.debug('entered trade: [{}]. Details: {}. No. shares after trx: {}'.format(
             trx_id,
             self._trades[trx_id],
             self._owned_shares[trx['symbol']],
@@ -242,7 +249,7 @@ class Backtester():
                 # in case of missing ds in symbol take previous price value
                 price, price_ds = self._backup_close_prices[symbol]
                 # TODO(slaw): log here that there was missing date with status such that it shows even if DEBUG is off
-                log(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
+                self.log.debug(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
                     price_ds, symbol, ds
                 ))
                 
@@ -294,32 +301,16 @@ def run_test_strategy():
 
     # print('\nFirst 5 results are: \n', results.head(5))
 
-    # log(pd.DataFrame(backtester.signals['ETFW20L']).head(5))
+    # self.log.debug(pd.DataFrame(backtester.signals['ETFW20L']).head(5))
     # ttt = pd.DataFrame(backtester.signals['ETFW20L']).head(5)
     # edf = pd.DataFrame()
     # xxx = pd.concat([ttt, edf], axis=1)
-    # log(xxx)
+    # self.log.debug(xxx)
 
     return results, trades 
 
 
-def log(*args):
-    if 'LOG' not in globals():
-        # when imported LOG variable will not exists...
-        LOG = False
-    if LOG == True:
-        print(*args)
-
-
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--log', action='store_true')
-    args = parser.parse_args()
-    if args.log == False:
-        LOG = False
-    else:
-        LOG = True
-    
     run_test_strategy()
 
 

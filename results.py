@@ -48,6 +48,9 @@ def evaluate(results_df, trades):
     profits = []
     losses = []
     for trade in trades.values():
+        # trade was not closed after backtest
+        if ('sell_value_gross' not in trade.keys()):
+            continue
         # proft: sold - bought
         if trade['type'] == 'long':
             profit = trade['sell_value_gross'] - trade['trx_value_gross']
@@ -63,7 +66,7 @@ def evaluate(results_df, trades):
     avg_loss = abs(sum(losses)/len(losses))
     expectation = ((len(profits)/no_trades)*avg_win) - ((len(losses)/no_trades)*avg_loss)
     return {
-        'shape': annualized_sharpe_ratio,
+        'sharpe': annualized_sharpe_ratio,
         'max_dd': maximum_drawdown,
         'max_dd_duration': maximum_drawdown_duration,
         'annualized_return': annualized_return,

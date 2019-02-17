@@ -4,15 +4,11 @@ import os
 import yaml
 
 
-def setup_logging(path='./logging.yaml', logger=None):
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--log', action='store_true')
-    args = parser.parse_args()
-
+def setup_logging(path='./logging.yaml', logger=None, debug=False):
     if not logger:
-        if args.log == False:
+        if debug == False:
             logger = 'simple_info'
-        elif args.log == True:
+        elif debug == True:
      	   logger = 'simple_debug'
 
     if os.path.exists(path):
@@ -21,3 +17,13 @@ def setup_logging(path='./logging.yaml', logger=None):
         logging.config.dictConfig(config)
         log = logging.getLogger(logger)    
     return log
+
+
+def get_parser():
+    """
+    Returns argparse.parser obj with agruments common for more modules.
+    Can be extened arbitrarly in each modul level if more customization needed.
+    """
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true')
+    return parser

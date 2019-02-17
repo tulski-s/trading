@@ -1,5 +1,4 @@
 # build-in
-import argparse
 import logging
 
 # 3rd party
@@ -8,7 +7,11 @@ import pandas as pd
 
 # custom
 from gpw_data import GPWData
-from commons import setup_logging
+from commons import (
+    setup_logging,
+    get_parser,
+)
+
 
 
 def get_strategy_signals(symbol):
@@ -60,7 +63,7 @@ def get_strategy_signals(symbol):
 
 
 class Backtester():
-    def __init__(self, signals, price_label='close', init_capital=10000, logger=None):
+    def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
@@ -68,7 +71,7 @@ class Backtester():
 
         *price_label* - column name for the price which should be used in backtest
         """
-        self.log = setup_logging(logger)
+        self.log = setup_logging(logger=logger, debug=debug)
         self.signals = self._prepare_signal(signals)
         self.price_label = price_label
         self.init_capital = init_capital
@@ -280,12 +283,10 @@ class Backtester():
         return df
 
 
-def run_test_strategy():
+def run_test_strategy(days=-1, debug=False):
     sn1, sn2 = 'ETFW20L', 'ETFSP500'
     stock_1_test, stock_1_val = get_strategy_signals(sn1)
     stock_2_test, stock_2_val = get_strategy_signals(sn2)
-
-    tdays = 1000
 
     signals = {
         sn1: stock_1_test,
@@ -294,24 +295,20 @@ def run_test_strategy():
 
     # print(signals['ETFW20L'].head(tdays))
 
-    backtester = Backtester(signals)
-
-    # results, trades = backtester.run(test_days=tdays)
-    results, trades = backtester.run()
-
-    # print('\nFirst 5 results are: \n', results.head(5))
-
-    # self.log.debug(pd.DataFrame(backtester.signals['ETFW20L']).head(5))
-    # ttt = pd.DataFrame(backtester.signals['ETFW20L']).head(5)
-    # edf = pd.DataFrame()
-    # xxx = pd.concat([ttt, edf], axis=1)
-    # self.log.debug(xxx)
+    backtester = Backtester(signals, debug=debug)
+    if days == -1:
+        results, trades = backtester.run()
+    else:
+        results, trades = backtester.run(test_days=days)
 
     return results, trades 
 
 
 if __name__ == '__main__':
-    run_test_strategy()
+    parser = get_parser()
+    parser.add_argument('--days', '-d', type=int, default=-1, help='number of days to run backtester for')
+    args = parser.parse_args()
+    run_test_strategy(args.days, args.debug)
 
 
 """
@@ -319,7 +316,7 @@ TODOs
 - test your previous strategy (if evaluation results gives the same results)
 - figure out how to change "buying_decisions" so that you can plug any logic to determine what and how much to buy
 - test you previous strategy based on different buying_decisions settings
-+ better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)
+- better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)
 
 - clean code, enhence logging, write tests
     https://docs.python.org/3/howto/logging.html

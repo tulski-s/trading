@@ -90,12 +90,14 @@ class Backtester():
         symbols_to_buy = []
         available_money_at_time = self._available_money*1.0  #  multp. to create new obj.
         for candidate in purchease_candidates:
+            self.log.debug('\t+ Deciding if buy {} - {}'.format(candidate['symbol'], candidate['entry_type']))
             price = candidate['price']
             shares_count = available_money_at_time // (price + (price*self.fee_perc))
             if shares_count == 0:
                 continue
             trx_value = shares_count*price
             expected_fee = self.calculate_fee(trx_value)
+            self.log.debug('\t\tWill buy {} shares of {}'.format(shares_count, candidate['symbol']))
             symbols_to_buy.append({
                 'symbol': candidate['symbol'],
                 'entry_type': candidate['entry_type'],
@@ -117,6 +119,10 @@ class Backtester():
     def run(self, test_days=None):
         self._reset_backtest_state()
 
+        self.log.debug('Starting backtest. Initial capital:{}, Available symbols: {}'.format(
+            self._available_money, list(self.signals.keys())
+        ))
+
         symbols_in_day = {}
         for sym_n, sym_v in self.signals.items():
             for ds in sym_v[self.price_label].keys():
@@ -130,41 +136,48 @@ class Backtester():
             days = days[:test_days]
 
         for ds in days:
-            self.log.debug('in {}, following symbols are available: {}'.format(str(ds), symbols_in_day[ds]))
-            owned_shares = list(self._owned_shares.keys())
-            for symbol in owned_shares:
+            self.log.debug('['+15*'-'+str(ds)[0:10]+15*'-'+']')
+            self.log.debug('\tAvailable symbols: ' + str(symbols_in_day[ds]))
 
+            owned_shares = list(self._owned_shares.keys())
+            self.log.debug('\t-- SELL START --')
+            if len(owned_shares) == 0:
+                self.log.debug('\t\tNo shares owned. Nothing to sell.')
+            else:
+                self.log.debug(
+                    '\tOwned shares: ' + ', '.join('{}={}'.format(s, int(self._owned_shares[s]['cnt'])) 
+                        for s in sorted(owned_shares))
+                )
+            for symbol in owned_shares:
                 # safe check if missing ds for given owned symbol
                 if not symbol in symbols_in_day[ds]:
                     continue
-                self.log.debug('checking for sale symbol: {} from owned shares'.format(symbol))
-                self.log.debug('_owned_shares val for given symbol: ', self._owned_shares[symbol])
-
+                self.log.debug('\t+ Checking exit signal for: ' + symbol)
                 if self.signals[symbol]['exit_long'][ds] == 1:
-                    self.log.debug('exit long signal for: ', symbol)
+                    self.log.debug('\t\t EXIT LONG')
                     self._sell(symbol, self.signals[symbol][self.price_label], ds)
                 elif self.signals[symbol]['exit_short'][ds] == 1:
-                    self.log.debug('exit short signal for: ', symbol)
+                    self.log.debug('\t\t EXIT SHORT')
                     self._sell(symbol, self.signals[symbol][self.price_label], ds)
-                
-
+            self.log.debug('\t-- SELL END --')
+            self.log.debug('\t-- BUY START --')
             purchease_candidates = []
             for sym in symbols_in_day[ds]:
                 if self.signals[sym]['entry_long'][ds] == 1:
                     purchease_candidates.append(self._define_candidate(sym, ds, 'long'))
                 elif self.signals[sym]['entry_short'][ds] == 1:
                     purchease_candidates.append(self._define_candidate(sym, ds, 'short'))
-
-            self.log.debug('     there are following candidates to buy: ', purchease_candidates)
-
+            if purchease_candidates == []:
+                self.log.debug('\t\tNo candidates to buy.')
             symbols_to_buy = self.buying_decisions(purchease_candidates)
 
             for trx_details in symbols_to_buy:
                 self._buy(trx_details, ds)
+            self.log.debug('\t--  BUY END --')
 
             self._summarize_day(ds)
 
-            self.log.debug('-> NAV after session({}) is : {}'.format(ds, self._net_account_value[ds]))
+            # self.log.debug('-> NAV after session({}) is : {}'.format(ds, self._net_account_value[ds]))
 
         return self._run_output(), self._trades
 
@@ -189,25 +202,31 @@ class Backtester():
         price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
         fee = self.calculate_fee(abs(shares_count)*price)
-        self.log.debug('          selling. fee is: ', fee)
         trx_value = (shares_count*price)
         trx_value_gross = trx_value - fee
+
+        self.log.debug('\t\tSelling {} (Transaction id: {})'.format(symbol, self._owned_shares[symbol]['trx_id']))
+        self.log.debug('\t\t\tNo. of sold shares: ' + str(int(shares_count)))
+        self.log.debug('\t\t\tSell price: ' + str(price))
+        self.log.debug('\t\t\tFee: ' + str(fee))
+        self.log.debug('\t\t\tTransaction value (no fee): ' + str(trx_value))
+        self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value - fee))
         
         self._available_money += trx_value_gross
 
-        self.log.debug('available money after sell: ', self._available_money)
+        self.log.debug('\t\tAvailable money after selling: ' + str(self._available_money))
         
         self._trades[self._owned_shares[symbol]['trx_id']].update({
             'sell_ds': ds,
             'sell_value_no_fee': trx_value,
             'sell_value_gross': trx_value_gross,
-            # holding days
         })
         self._owned_shares.pop(symbol)
 
     def _buy(self, trx, ds):
         """Buying procedure"""
         trx_id = '_'.join((str(ds)[:10], trx['symbol'], trx['entry_type']))
+        self.log.debug('\t\tBuying {} (Transaction id: {})'.format(trx['symbol'], trx_id))
         
         if trx['entry_type'] == 'long':
             trx_value_gross = trx['trx_value'] + trx['fee']
@@ -227,12 +246,12 @@ class Backtester():
             'trx_value_gross': trx_value_gross,
         }
 
-        self.log.debug('entered trade: [{}]. Details: {}. No. shares after trx: {}'.format(
-            trx_id,
-            self._trades[trx_id],
-            self._owned_shares[trx['symbol']],
-            )
-        )
+        self.log.debug('\t\t\tNo. of bought shares: ' + str(int(trx['shares_count'])))
+        self.log.debug('\t\t\tBuy price: ' + str(trx['price']))
+        self.log.debug('\t\t\tFee: ' + str(trx['fee']))
+        self.log.debug('\t\t\tTransaction value (no fee): ' + str(trx['trx_value']))
+        self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value_gross))
+        self.log.debug('\t\tAvailable money after buying: ' + str(self._available_money))
 
     def _define_candidate(self, symbol, ds, entry_type):
         """Reutrns dictionary with purchease candidates and necessery keys."""
@@ -244,6 +263,7 @@ class Backtester():
 
     def _summarize_day(self, ds):
         """Sets up summaries after finished session day."""
+        self.log.debug('[SUMMARIZE SESSION {}]'.format(str(ds)[:10]))
         _account_value = 0
         for symbol, vals in self._owned_shares.items():
             try:
@@ -252,9 +272,9 @@ class Backtester():
                 # in case of missing ds in symbol take previous price value
                 price, price_ds = self._backup_close_prices[symbol]
                 # TODO(slaw): log here that there was missing date with status such that it shows even if DEBUG is off
-                self.log.debug(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
-                    price_ds, symbol, ds
-                ))
+                # self.log.debug(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
+                #     price_ds, symbol, ds
+                # ))
                 
             _account_value += vals['cnt'] * price
             self._backup_close_prices[symbol] = (price, ds)
@@ -313,7 +333,7 @@ if __name__ == '__main__':
 
 """
 TODOs
-- test your previous strategy (if evaluation results gives the same results)
+- test your previous strategy - if evaluation results gives the same results, if not - find out why
 - figure out how to change "buying_decisions" so that you can plug any logic to determine what and how much to buy
 - test you previous strategy based on different buying_decisions settings
 - better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)

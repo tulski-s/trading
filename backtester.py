@@ -140,7 +140,7 @@ class Backtester():
             self.log.debug('\tAvailable symbols: ' + str(symbols_in_day[ds]))
 
             owned_shares = list(self._owned_shares.keys())
-            self.log.debug('\t-- SELL START --')
+            self.log.debug('\t[-- SELL START --]')
             if len(owned_shares) == 0:
                 self.log.debug('\t\tNo shares owned. Nothing to sell.')
             else:
@@ -159,8 +159,8 @@ class Backtester():
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     self.log.debug('\t\t EXIT SHORT')
                     self._sell(symbol, self.signals[symbol][self.price_label], ds)
-            self.log.debug('\t-- SELL END --')
-            self.log.debug('\t-- BUY START --')
+            self.log.debug('\t[-- SELL END --]')
+            self.log.debug('\t[-- BUY START --]')
             purchease_candidates = []
             for sym in symbols_in_day[ds]:
                 if self.signals[sym]['entry_long'][ds] == 1:
@@ -173,7 +173,7 @@ class Backtester():
 
             for trx_details in symbols_to_buy:
                 self._buy(trx_details, ds)
-            self.log.debug('\t--  BUY END --')
+            self.log.debug('\t[--  BUY END --]')
 
             self._summarize_day(ds)
 
@@ -271,19 +271,22 @@ class Backtester():
             except KeyError:
                 # in case of missing ds in symbol take previous price value
                 price, price_ds = self._backup_close_prices[symbol]
-                # TODO(slaw): log here that there was missing date with status such that it shows even if DEBUG is off
-                # self.log.debug(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
-                #     price_ds, symbol, ds
-                # ))
-                
+                self.log.warning(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
+                    price_ds, symbol, ds
+                ))
+
             _account_value += vals['cnt'] * price
             self._backup_close_prices[symbol] = (price, ds)
-
 
         nav = _account_value + self._available_money
         self._account_value[ds] = _account_value
         self._net_account_value[ds] = nav
         self._rate_of_return[ds] = ((nav-self.init_capital)/self.init_capital)*100
+
+        self.log.debug('Available money is: ' + str(self._available_money))
+        self.log.debug('Shares: ' + ','.join(sorted(['{}: {}'.format(k, v['cnt']) for k,v in self._owned_shares.items()])))
+        self.log.debug('Net Account Value is: ' + str(nav))
+        self.log.debug('Rate of return: ' + str(self._rate_of_return[ds]))
 
     def _run_output(self):
         """
@@ -333,12 +336,8 @@ if __name__ == '__main__':
 
 """
 TODOs
-- test your previous strategy - if evaluation results gives the same results, if not - find out why
 - figure out how to change "buying_decisions" so that you can plug any logic to determine what and how much to buy
 - test you previous strategy based on different buying_decisions settings
 - better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)
-
-- clean code, enhence logging, write tests
-    https://docs.python.org/3/howto/logging.html
-    https://docs.python-guide.org/writing/logging/
+- clean code, write tests
 """

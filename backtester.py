@@ -7,6 +7,11 @@ import pandas as pd
 
 # custom
 from gpw_data import GPWData
+
+from position_size import (
+    MaxFirstEncountered,
+)
+
 from commons import (
     setup_logging,
     get_parser,
@@ -63,7 +68,8 @@ def get_strategy_signals(symbol):
 
 
 class Backtester():
-    def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False):
+    def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False, 
+                 PositionSizer=MaxFirstEncountered):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
@@ -76,9 +82,8 @@ class Backtester():
         self.price_label = price_label
         self.init_capital = init_capital
 
-        # those will most probably be taken out to risk component
-        self.fee_perc = 0.0038  # 0.38%
-        self.min_fee = 4  # 4 PLN
+        # TODO(slaw) - propably instance of the class should go as a parameter instead of class template???
+        self.position_sizer = PositionSizer()
 
     def buying_decisions(self, purchease_candidates):
         """
@@ -87,16 +92,24 @@ class Backtester():
         Currently no complex decision making. Just buy as much as you can
         for the first encountered candidate from purchease_candidates.
         """
+
+
+
+
         symbols_to_buy = []
         available_money_at_time = self._available_money*1.0  #  multp. to create new obj.
         for candidate in purchease_candidates:
             self.log.debug('\t+ Deciding if buy {} - {}'.format(candidate['symbol'], candidate['entry_type']))
+
             price = candidate['price']
-            shares_count = available_money_at_time // (price + (price*self.fee_perc))
+            shares_count = available_money_at_time // (price + (price*self.position_sizer.fee_perc))
             if shares_count == 0:
                 continue
+
             trx_value = shares_count*price
-            expected_fee = self.calculate_fee(trx_value)
+            expected_fee = self.position_sizer.calculate_fee(trx_value)
+
+
             self.log.debug('\t\tWill buy {} shares of {}'.format(shares_count, candidate['symbol']))
             symbols_to_buy.append({
                 'symbol': candidate['symbol'],
@@ -109,12 +122,6 @@ class Backtester():
             available_money_at_time -= (trx_value+expected_fee)
         return symbols_to_buy
 
-    def calculate_fee(self, transaction_value):
-        """Calculates expected transaction fee."""
-        fee = transaction_value * self.fee_perc
-        if fee < self.min_fee:
-            fee = self.min_fee
-        return round(fee, 2)
 
     def run(self, test_days=None):
         self._reset_backtest_state()
@@ -201,7 +208,7 @@ class Backtester():
         """Selling procedure"""
         price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
-        fee = self.calculate_fee(abs(shares_count)*price)
+        fee = self.position_sizer.calculate_fee(abs(shares_count)*price)
         trx_value = (shares_count*price)
         trx_value_gross = trx_value - fee
 
@@ -337,6 +344,7 @@ if __name__ == '__main__':
 """
 TODOs
 - figure out how to change "buying_decisions" so that you can plug any logic to determine what and how much to buy
+- add test so that you can implement more stuff safely
 - test you previous strategy based on different buying_decisions settings
 - better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)
 - clean code, write tests

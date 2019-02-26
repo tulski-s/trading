@@ -61,15 +61,13 @@ def get_strategy_signals(symbol):
             )
             etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
 
-    # print('na chwile: ', etf_t.head(5))
-
     return etf_t, etf_v
 
 
 
 class Backtester():
     def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False, 
-                 PositionSizer=MaxFirstEncountered):
+                 position_sizer=None):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
@@ -79,49 +77,9 @@ class Backtester():
         """
         self.log = setup_logging(logger=logger, debug=debug)
         self.signals = self._prepare_signal(signals)
+        self.position_sizer = position_sizer
         self.price_label = price_label
         self.init_capital = init_capital
-
-        # TODO(slaw) - propably instance of the class should go as a parameter instead of class template???
-        self.position_sizer = PositionSizer()
-
-    def buying_decisions(self, purchease_candidates):
-        """
-        Decides how much and of which shares to buy.
-
-        Currently no complex decision making. Just buy as much as you can
-        for the first encountered candidate from purchease_candidates.
-        """
-
-
-
-
-        symbols_to_buy = []
-        available_money_at_time = self._available_money*1.0  #  multp. to create new obj.
-        for candidate in purchease_candidates:
-            self.log.debug('\t+ Deciding if buy {} - {}'.format(candidate['symbol'], candidate['entry_type']))
-
-            price = candidate['price']
-            shares_count = available_money_at_time // (price + (price*self.position_sizer.fee_perc))
-            if shares_count == 0:
-                continue
-
-            trx_value = shares_count*price
-            expected_fee = self.position_sizer.calculate_fee(trx_value)
-
-
-            self.log.debug('\t\tWill buy {} shares of {}'.format(shares_count, candidate['symbol']))
-            symbols_to_buy.append({
-                'symbol': candidate['symbol'],
-                'entry_type': candidate['entry_type'],
-                'shares_count': shares_count,
-                'price': price,
-                'trx_value': trx_value,
-                'fee': expected_fee,
-            })
-            available_money_at_time -= (trx_value+expected_fee)
-        return symbols_to_buy
-
 
     def run(self, test_days=None):
         self._reset_backtest_state()
@@ -176,15 +134,17 @@ class Backtester():
                     purchease_candidates.append(self._define_candidate(sym, ds, 'short'))
             if purchease_candidates == []:
                 self.log.debug('\t\tNo candidates to buy.')
-            symbols_to_buy = self.buying_decisions(purchease_candidates)
+
+            symbols_to_buy = self.position_sizer.decide_what_to_buy(
+                # multplication is to create new object instead of using actual pointer
+                self._available_money*1.0, purchease_candidates
+            )
 
             for trx_details in symbols_to_buy:
                 self._buy(trx_details, ds)
             self.log.debug('\t[--  BUY END --]')
 
             self._summarize_day(ds)
-
-            # self.log.debug('-> NAV after session({}) is : {}'.format(ds, self._net_account_value[ds]))
 
         return self._run_output(), self._trades
 
@@ -270,7 +230,7 @@ class Backtester():
 
     def _summarize_day(self, ds):
         """Sets up summaries after finished session day."""
-        self.log.debug('[SUMMARIZE SESSION {}]'.format(str(ds)[:10]))
+        self.log.debug('[ SUMMARIZE SESSION {} ]'.format(str(ds)[:10]))
         _account_value = 0
         for symbol, vals in self._owned_shares.items():
             try:
@@ -278,7 +238,7 @@ class Backtester():
             except KeyError:
                 # in case of missing ds in symbol take previous price value
                 price, price_ds = self._backup_close_prices[symbol]
-                self.log.warning(30*' ', '!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
+                self.log.warning('\t\t!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
                     price_ds, symbol, ds
                 ))
 
@@ -323,9 +283,8 @@ def run_test_strategy(days=-1, debug=False):
         # sn2: stock_2_test,
     }
 
-    # print(signals['ETFW20L'].head(tdays))
-
-    backtester = Backtester(signals, debug=debug)
+    position_sizer = MaxFirstEncountered(debug=debug, sort_type='cheapest')
+    backtester = Backtester(signals, position_sizer=position_sizer, debug=debug)
     if days == -1:
         results, trades = backtester.run()
     else:
@@ -343,7 +302,6 @@ if __name__ == '__main__':
 
 """
 TODOs
-- figure out how to change "buying_decisions" so that you can plug any logic to determine what and how much to buy
 - add test so that you can implement more stuff safely
 - test you previous strategy based on different buying_decisions settings
 - better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)

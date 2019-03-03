@@ -302,7 +302,7 @@ if __name__ == '__main__':
 
 """
 TODOs
-- add test so that you can implement more stuff safely
+- add new position sizer -> buy more than 1 share
 - test you previous strategy based on different buying_decisions settings
 - better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)
 - clean code, write tests

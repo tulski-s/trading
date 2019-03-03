@@ -18,7 +18,6 @@ class PositionSize(metaclass=ABCMeta):
         self.min_fee = 4  # 4 PLN
         self.sort_type = sort_type
 
-
     @abstractmethod
     def decide_what_to_buy(self, available_money_at_time, candidates):
         pass
@@ -42,6 +41,9 @@ class PositionSize(metaclass=ABCMeta):
             _candidates.sort(key=lambda c: c['price'], reverse=True)
         return _candidates
 
+    def get_shares_count(self, money, price):
+        return money // (price + (price*self.fee_perc))
+
     def _define_symbol_to_buy(self, candidate, shares_count, trx_value, expected_fee):
         return {
             'symbol': candidate['symbol'],
@@ -52,6 +54,15 @@ class PositionSize(metaclass=ABCMeta):
             'fee': expected_fee,
         }
 
+    def _deciding_to_buy_msg(self, symbol, entry_type):
+        self.log.debug('\t+ Deciding how much of {} to buy ({}).'.format(symbol, entry_type))
+
+    def _cannot_afford_msg(self, symbol):
+        self.log.debug('\t+ Cannot afford any amount of share. Not buying {}.'.format(symbol))
+
+    def _buying_decision_msg(self, shares_count, symbol):
+        self.log.debug('\t+ Buying decision: {} shares of {}.'.format(shares_count, symbol))
+
 
 class MaxFirstEncountered(PositionSize):
     """
@@ -60,17 +71,50 @@ class MaxFirstEncountered(PositionSize):
     """
     def decide_what_to_buy(self, available_money_at_time, candidates):
         for candidate in self.sort(candidates):
-            self.log.debug('\t+ Deciding how much of {} to buy ({}).'.format(candidate['symbol'], candidate['entry_type']))
+            self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
             price = candidate['price']
-            shares_count = available_money_at_time // (price + (price*self.fee_perc))
+            shares_count = self.get_shares_count(available_money_at_time, price)
             if shares_count == 0:
-                self.log.debug('\t+ Cannot afford any amount of share. Not buying {}.'.format(candidate['symbol']))
+                self._cannot_afford_msg(candidate['symbol'])
                 return None
             trx_value = shares_count*price
             expected_fee = self.calculate_fee(trx_value)
             self.log.debug('\t+ Buying decision: {} shares of {}.'.format(shares_count, candidate['symbol']))
             return [self._define_symbol_to_buy(candidate, shares_count, trx_value, expected_fee)]
         return []
+
+
+class FixedCapitalPerc(PositionSize):
+    """
+    Decides to buy as much different symbols as possible, but for each symbol buys shares for up to `capital_perc` of current 
+    capital. For example, if capital is $1000 and capital_perc is 10%, then it will decide to buy up to 10 symbols and shares 
+    for up $100 for each sumbol.
+    """
+    def decide_what_to_buy(self, capital, capital_perc, available_money_at_time, candidates):
+        single_buy_limit = capital*capital_perc
+        symbols_to_buy = []
+        for candidate in self.sort(candidates):
+            self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
+            if available_money_at_time < single_buy_limit:
+                shares_count = self.get_shares_count(available_money_at_time, price)
+            else:
+                shares_count = self.get_shares_count(single_buy_limit, price)
+            if shares_count == 0:
+                self._cannot_afford_msg(candidate['symbol'])
+                continue
+            trx_value = shares_count*price
+            expected_fee = self.calculate_fee(trx_value)
+            self.log.debug('\t+ Buying decision: {} shares of {}.'.format(shares_count, candidate['symbol']))
+            symbols_to_buy.append(self._define_symbol_to_buy(candidate, shares_count, trx_value, expected_fee))
+            available_money_at_time -= (trx_value+expected_fee)
+        return symbols_to_buy
+            
+
+"""
+TODO(slaw):
+- unit tests for FixedCapitalPerc
+- MODEL 3: THE PERCENT RISK MODEL  -> 156 strona z ksiazki "trade your way...""
+"""
 
 
 def main():

@@ -82,20 +82,9 @@ def test_decide_what_to_buy_1_can(candidates_1, alphabetical_sizer_FixedCapitalP
     }]
     assert(symbols_to_buy == expected_symbols_to_buy)
 
+
 def test_decide_what_to_buy_2_can(candidates_2, cheapest_sizer_FixedCapitalPerc):
     symbols_to_buy = cheapest_sizer_FixedCapitalPerc.decide_what_to_buy(100000, 0.1, 9000, candidates_2)
-    """
-    1.
-    powinnien probowac kupic: c2 po 387
-    capital jest 100 000, z czego 10% (0.1) to 10 000
-    mam 9000 hajsow wiec mniej niz limit
-    moge kupic 23 (9000 / (387+(387*0.0038)))
-    trx val -> 23 * 387 = 8 901
-    fee -> 8 901 * 0.0038 = 33.8238 = 33.82
-
-    po tej transakcji zostanie mi: 9000 - (8901+33.8238) = 65.1762
-    nie stac mnie na zakup niczego wiecej
-    """
     expected_symbols_to_buy = [{
         'symbol': 'c2',
         'entry_type': 'long',
@@ -107,3 +96,38 @@ def test_decide_what_to_buy_2_can(candidates_2, cheapest_sizer_FixedCapitalPerc)
     assert(symbols_to_buy == expected_symbols_to_buy)
 
 
+def test_decide_what_to_buy_3_can(candidates_3, cheapest_sizer_FixedCapitalPerc):
+    symbols_to_buy = cheapest_sizer_FixedCapitalPerc.decide_what_to_buy(100000, 0.1, 50000, candidates_3)
+    """
+    ile? (10000 / (103+(103*0.0038))) -> 96
+    trx val -> 96 * 103 = 9888
+    fee -> 9888*0.0038 = 37.5744 = 37.57
+    po trx: 50000 - (9888+37.57) = 40074.43
+    """
+    expected_symbols_to_buy = [
+        {
+        'symbol': 'c2',
+        'entry_type': 'short',
+        'shares_count': 96,
+        'price': 103,
+        'trx_value': 9888,
+        'fee': 37.57
+        },
+        {
+        'symbol': 'c1',
+        'entry_type': 'long',
+        'shares_count': 89,
+        'price': 111,
+        'trx_value': 9879,
+        'fee': 37.54
+        },
+        {
+        'symbol': 'c3',
+        'entry_type': 'long',
+        'shares_count': 51,
+        'price': 194,
+        'trx_value': 9894,
+        'fee': 37.60
+        }
+    ]
+    assert(symbols_to_buy == expected_symbols_to_buy)

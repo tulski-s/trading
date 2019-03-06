@@ -26,6 +26,46 @@ def signals_test_sigs_1():
     }
     return {'TEST_SIGS_1': pd.DataFrame(signals_data, index=pd.DatetimeIndex(dates))}
 
+def signals_test_sigs_2():
+    """
+    Creates signals with 2 symbols 'TEST_SIGS_1' and following data:
+    {
+    'TEST_SIGS_1':
+    date           close    entry_long  exit_long  entry_short  exit_short
+    2010-09-28       230         1          0            0           0
+    2010-09-29       233         0          1            0           0
+    2010-09-30       235         0          1            1           0
+    2010-10-01       237         0          0            0           1
+
+    'TEST_SIGS_2':
+    date           close    entry_long  exit_long  entry_short  exit_short
+    2010-09-28       300         1          0            0           0
+    2010-09-29       280         0          1            1           0
+    2010-09-30       390         1          0            0           1
+    2010-10-01       340         0          1            0           0
+    }
+    """
+    dates = ['2010-09-28', '2010-09-29', '2010-09-30', '2010-10-01']
+    s1_data = {
+        'close': [230, 233, 235, 237],
+        'entry_long': [1,0,0,0],
+        'exit_long': [0,1,0,0],
+        'entry_short': [0,0,1,0],
+        'exit_short': [0,0,0,1],
+    }
+    s2_data = {
+        'close': [300, 280, 390, 340],
+        'entry_long': [1,0,0,0],
+        'exit_long': [0,1,0,0],
+        'entry_short': [0,0,1,0],
+        'exit_short': [0,0,0,1],
+    }
+
+    return {
+        'TEST_SIGS_1': pd.DataFrame(s1_data, index=pd.DatetimeIndex(dates)),
+        'TEST_SIGS_1': pd.DataFrame(s2_data, index=pd.DatetimeIndex(dates))
+    }
+
 
 def max_first_encountered_alpha_sizer():
     """

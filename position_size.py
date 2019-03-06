@@ -94,6 +94,7 @@ class FixedCapitalPerc(PositionSize):
         single_buy_limit = capital*capital_perc
         symbols_to_buy = []
         for candidate in self.sort(candidates):
+            price = candidate['price']
             self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
             if available_money_at_time < single_buy_limit:
                 shares_count = self.get_shares_count(available_money_at_time, price)

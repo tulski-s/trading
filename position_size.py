@@ -90,8 +90,13 @@ class FixedCapitalPerc(PositionSize):
     capital. For example, if capital is $1000 and capital_perc is 10%, then it will decide to buy up to 10 symbols and shares 
     for up $100 for each sumbol.
     """
-    def decide_what_to_buy(self, capital, capital_perc, available_money_at_time, candidates):
-        single_buy_limit = capital*capital_perc
+    def __init__(self, capital=None, capital_perc=None, **kwargs):
+        super().__init__(**kwargs)
+        self.capital = capital
+        self.capital_perc = capital_perc
+
+    def decide_what_to_buy(self, available_money_at_time, candidates):
+        single_buy_limit = self.capital*self.capital_perc
         symbols_to_buy = []
         for candidate in self.sort(candidates):
             price = candidate['price']
@@ -113,7 +118,6 @@ class FixedCapitalPerc(PositionSize):
 
 """
 TODO(slaw):
-- unit tests for FixedCapitalPerc
 - MODEL 3: THE PERCENT RISK MODEL  -> 156 strona z ksiazki "trade your way...""
 """
 

@@ -63,7 +63,7 @@ def signals_test_sigs_2():
 
     return {
         'TEST_SIGS_1': pd.DataFrame(s1_data, index=pd.DatetimeIndex(dates)),
-        'TEST_SIGS_1': pd.DataFrame(s2_data, index=pd.DatetimeIndex(dates))
+        'TEST_SIGS_2': pd.DataFrame(s2_data, index=pd.DatetimeIndex(dates))
     }
 
 

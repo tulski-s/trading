@@ -3,7 +3,8 @@ import pytest
 
 # custom
 from position_size import (
-    FixedCapitalPerc
+    FixedCapitalPerc,
+    MaxFirstEncountered,
 )
 
 
@@ -47,31 +48,21 @@ def candidates_10():
     ]
 
 
-@pytest.fixture
-def alphabetical_sizer_FixedCapitalPerc():
-    return FixedCapitalPerc()
-
-
-@pytest.fixture
-def cheapest_sizer_FixedCapitalPerc():
-    return FixedCapitalPerc(sort_type='cheapest')
-
-
-def test_sorting_alphabetical(candidates_10, alphabetical_sizer_FixedCapitalPerc):
-    sorted_candidates = alphabetical_sizer_FixedCapitalPerc.sort(candidates_10)
+def test_sorting_alphabetical(candidates_10):
+    sorted_candidates = MaxFirstEncountered().sort(candidates_10)
     expected_symbols_order = ['c1', 'c10', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']
     assert([x['symbol'] for x in sorted_candidates] == expected_symbols_order)
 
 
-def test_sorting_cheapest(candidates_10, cheapest_sizer_FixedCapitalPerc):
-    sorted_candidates = [x['symbol'] for x in cheapest_sizer_FixedCapitalPerc.sort(candidates_10)]
+def test_sorting_cheapest(candidates_10):
+    sorted_candidates = [x['symbol'] for x in MaxFirstEncountered(sort_type='cheapest').sort(candidates_10)]
     expected_symbols_order_v1 = ['c10', 'c9', 'c1', 'c8', 'c2', 'c7', 'c3', 'c6', 'c4', 'c5']
     expected_symbols_order_v2 = ['c10', 'c9', 'c8', 'c9', 'c2', 'c7', 'c3', 'c6', 'c4', 'c5']
     assert(sorted_candidates in [expected_symbols_order_v1, expected_symbols_order_v2])
 
 
-def test_decide_what_to_buy_1_can(candidates_1, alphabetical_sizer_FixedCapitalPerc):
-    symbols_to_buy = alphabetical_sizer_FixedCapitalPerc.decide_what_to_buy(10000, 0.1, 5000, candidates_1)
+def test_decide_what_to_buy_1_can(candidates_1):
+    symbols_to_buy = FixedCapitalPerc(capital=10000, capital_perc=0.1).decide_what_to_buy(5000, candidates_1)
     expected_symbols_to_buy = [{
         'symbol': 'c1',
         'entry_type': 'long',
@@ -83,8 +74,8 @@ def test_decide_what_to_buy_1_can(candidates_1, alphabetical_sizer_FixedCapitalP
     assert(symbols_to_buy == expected_symbols_to_buy)
 
 
-def test_decide_what_to_buy_2_can(candidates_2, cheapest_sizer_FixedCapitalPerc):
-    symbols_to_buy = cheapest_sizer_FixedCapitalPerc.decide_what_to_buy(100000, 0.1, 9000, candidates_2)
+def test_decide_what_to_buy_2_can(candidates_2):
+    symbols_to_buy = FixedCapitalPerc(sort_type='cheapest', capital=100000, capital_perc=0.1).decide_what_to_buy(9000, candidates_2)
     expected_symbols_to_buy = [{
         'symbol': 'c2',
         'entry_type': 'long',
@@ -96,8 +87,8 @@ def test_decide_what_to_buy_2_can(candidates_2, cheapest_sizer_FixedCapitalPerc)
     assert(symbols_to_buy == expected_symbols_to_buy)
 
 
-def test_decide_what_to_buy_3_can(candidates_3, cheapest_sizer_FixedCapitalPerc):
-    symbols_to_buy = cheapest_sizer_FixedCapitalPerc.decide_what_to_buy(100000, 0.1, 50000, candidates_3)
+def test_decide_what_to_buy_3_can(candidates_3):
+    symbols_to_buy = FixedCapitalPerc(sort_type='cheapest', capital=100000, capital_perc=0.1).decide_what_to_buy(50000, candidates_3)
     """
     ile? (10000 / (103+(103*0.0038))) -> 96
     trx val -> 96 * 103 = 9888

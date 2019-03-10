@@ -22,44 +22,36 @@ from commons import (
 def get_strategy_signals(symbol):
     # TODO(2019-02-09) This strategy here is just for testing purposes... Will remove it soon.
     data = GPWData()
-    etf_full = data.load(symbols=symbol)
+    etf = data.load(symbols=symbol)
 
     # strategy params (should come as params but hardcoded here for simplicity)
     time_window=3
     long_threshold=35
     short_threshold=30
-
-    # split data into optimize/validate
-    length = len(etf_full.index)
-
-    # this splitting to half is actually pretty bad. as one can have mutiple timspans
-    # for example, half of ETF woth 10y data is 5y and half of 2y history is 1y
-    # if that is used for stock universe with multiple stocks then dates will not overlapp as they should
-    etf_t = etf_full.iloc[:length//2, :].copy()
-    etf_v = etf_full.iloc[length//2:, :].copy()
     
     # calculate signals
-    for etf in (etf_t, etf_v):
-        for price in ('high', 'low', 'close'):
-            etf.loc[:, 'ema_{}_{}'.format(time_window, price)] = etf[price].ewm(span=time_window, adjust=False).mean()
-        etf.loc[:, 'adr'] = etf['ema_{}_high'.format(time_window)] - etf['ema_{}_low'.format(time_window)]
-        etf.loc[:, 'perc_range'] = \
-            ((etf['ema_{}_high'.format(time_window)]-etf['ema_{}_close'.format(time_window)])*100)/etf['adr']
-        
-        for signal_type in ('long', 'short'):
-            if signal_type == 'long':
-                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] > long_threshold, 1, 0)
-            elif signal_type == 'short':
-                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] < short_threshold, 1, 0)
-            etf.loc[:, 'previous_potential_signal'] = etf['potential_signal'].shift(1)
-            etf['previous_potential_signal'].fillna(value=0, inplace=True)
-            etf.loc[:, 'entry_{}'.format(signal_type)] = np.where(
-                (etf['potential_signal']==1) & (etf['previous_potential_signal']==0), 1, 0
-            )
-            etf.loc[:, 'exit_{}'.format(signal_type)] = np.where(
-                (etf['potential_signal']==0) & (etf['previous_potential_signal']==1), 1, 0
-            )
-            etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
+    for price in ('high', 'low', 'close'):
+        etf.loc[:, 'ema_{}_{}'.format(time_window, price)] = etf[price].ewm(span=time_window, adjust=False).mean()
+    etf.loc[:, 'adr'] = etf['ema_{}_high'.format(time_window)] - etf['ema_{}_low'.format(time_window)]
+    etf.loc[:, 'perc_range'] = \
+        ((etf['ema_{}_high'.format(time_window)]-etf['ema_{}_close'.format(time_window)])*100)/etf['adr']
+    
+    for signal_type in ('long', 'short'):
+        if signal_type == 'long':
+            etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] > long_threshold, 1, 0)
+        elif signal_type == 'short':
+            etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] < short_threshold, 1, 0)
+        etf.loc[:, 'previous_potential_signal'] = etf['potential_signal'].shift(1)
+        etf['previous_potential_signal'].fillna(value=0, inplace=True)
+        etf.loc[:, 'entry_{}'.format(signal_type)] = np.where(
+            (etf['potential_signal']==1) & (etf['previous_potential_signal']==0), 1, 0
+        )
+        etf.loc[:, 'exit_{}'.format(signal_type)] = np.where(
+            (etf['potential_signal']==0) & (etf['previous_potential_signal']==1), 1, 0
+        )
+        etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
+
+    etf_t, etf_v = data.split_into_subsets({'symbol': etf}, 0.5)
 
     return etf_t, etf_v
 
@@ -278,13 +270,8 @@ def run_test_strategy(days=-1, debug=False):
     stock_1_test, stock_1_val = get_strategy_signals(sn1)
     stock_2_test, stock_2_val = get_strategy_signals(sn2)
 
-    signals = {
-        sn1: stock_1_test,
-        # sn2: stock_2_test,
-    }
-
     position_sizer = MaxFirstEncountered(debug=debug, sort_type='cheapest')
-    backtester = Backtester(signals, position_sizer=position_sizer, debug=debug)
+    backtester = Backtester(stock_1_test, position_sizer=position_sizer, debug=debug)
     if days == -1:
         results, trades = backtester.run()
     else:
@@ -302,8 +289,6 @@ if __name__ == '__main__':
 
 """
 TODOs
-- add new position sizer -> buy more than 1 share
 - test you previous strategy based on different buying_decisions settings
-- better logic for handling universes (finding overlapping periods, spliting into test/validation, etc.)
 - clean code, write tests
 """

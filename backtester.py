@@ -115,10 +115,10 @@ class Backtester():
                 self.log.debug('\t+ Checking exit signal for: ' + symbol)
                 if self.signals[symbol]['exit_long'][ds] == 1:
                     self.log.debug('\t\t EXIT LONG')
-                    self._sell(symbol, self.signals[symbol][self.price_label], ds)
+                    self._sell(symbol, self.signals[symbol][self.price_label], ds, 'long')
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     self.log.debug('\t\t EXIT SHORT')
-                    self._sell(symbol, self.signals[symbol][self.price_label], ds)
+                    self._sell(symbol, self.signals[symbol][self.price_label], ds, 'short')
                 else:
                     self.log.debug('\t+ Not exiting from: ' + symbol)
             self.log.debug('\t[-- SELL END --]')
@@ -158,28 +158,46 @@ class Backtester():
         """Resets all attributes used during backtest run."""
         self._owned_shares = {}
         self._available_money = self.init_capital
+        self._money_from_short = {}
         self._trades = {}
         self._account_value = {}
         self._net_account_value = {}
         self._rate_of_return = {}
         self._backup_close_prices = {}
 
-    def _sell(self, symbol, prices, ds):
+    def _sell(self, symbol, prices, ds, exit_type):
         """Selling procedure"""
         price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
         fee = self.position_sizer.calculate_fee(abs(shares_count)*price)
-        trx_value = (shares_count*price)
+        trx_value = (abs(shares_count)*price)
         trx_value_gross = trx_value - fee
 
-        self.log.debug('\t\tSelling {} (Transaction id: {})'.format(symbol, self._owned_shares[symbol]['trx_id']))
+        trx_id = self._owned_shares[symbol]['trx_id']
+
+        self.log.debug('\t\tSelling {} (Transaction id: {})'.format(symbol, trx_id))
         self.log.debug('\t\t\tNo. of sold shares: ' + str(int(shares_count)))
         self.log.debug('\t\t\tSell price: ' + str(price))
         self.log.debug('\t\t\tFee: ' + str(fee))
         self.log.debug('\t\t\tTransaction value (no fee): ' + str(trx_value))
         self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value - fee))
         
+        if exit_type == 'short':
+            # have to return whole borrowed money first
+            self._available_money -= self._money_from_short[trx_id] 
         self._available_money += trx_value_gross
+        """
+        trx_value_gross jest ujemne...
+
+        tutaj musze 
+            1) oddac pieniadze 
+            2) wziac co zostalo albo zabrac z tego co mam zeby wyszlo na zero
+        
+        from_sale = abs(trx_value)-fee 
+
+        1) available_money = available_money - money_from_short   <--- oddaje
+        2) available_money = available_money + from_sale  <--- biore to co ze sprzedazy
+        """
 
         self.log.debug('\t\tAvailable money after selling: ' + str(self._available_money))
         if self._available_money < 0:
@@ -205,9 +223,11 @@ class Backtester():
             self._available_money -= trx_value_gross
                     
         elif trx['entry_type'] == 'short':
-            trx_value_gross = trx['trx_value'] - trx['fee']
+            trx_value_gross = abs(trx['trx_value']) + trx['fee']
             self._owned_shares[trx['symbol']] = {'cnt': -trx['shares_count']}
-            self._available_money += trx_value_gross
+            self._available_money -= trx['fee']
+
+            self._money_from_short[trx_id] = trx['trx_value']
 
         self._owned_shares[trx['symbol']]['trx_id'] = trx_id
         self._trades[trx_id] = {
@@ -223,6 +243,8 @@ class Backtester():
         self.log.debug('\t\t\tTransaction value (no fee): ' + str(trx['trx_value']))
         self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value_gross))
         self.log.debug('\t\tAvailable money after buying: ' + str(self._available_money))
+        if trx['entry_type'] == 'short':
+            self.log.debug('\t\tMoney from short sell: ' + str(self._money_from_short[trx_id]))
 
     def _define_candidate(self, symbol, ds, entry_type):
         """Reutrns dictionary with purchease candidates and necessery keys."""
@@ -249,7 +271,8 @@ class Backtester():
             _account_value += vals['cnt'] * price
             self._backup_close_prices[symbol] = (price, ds)
 
-        nav = _account_value + self._available_money
+        # account value (can be negative) + avaiable money + any borrowed moneny
+        nav = _account_value + self._available_money + sum([m for m in self._money_from_short[trx_id].values()]) 
         self._account_value[ds] = _account_value
         self._net_account_value[ds] = nav
         self._rate_of_return[ds] = ((nav-self.init_capital)/self.init_capital)*100
@@ -303,9 +326,6 @@ if __name__ == '__main__':
 """
 TODOs
 - test you previous strategy with 2 symbols (previously I was getting a lot of warnings due to wrong split)
-    OK + TODEBUG: how I ended up with holding 2 shares with MaxFirstEncountered. That is theoretically possible...
-               but want to double check that.
-    
     + fix and add test for following:
         On 2011-06-09 I'm entering short for ETFSP500. As this is short sell - it adds me money to account. 
         After that buying short I have 18679 available money.
@@ -317,6 +337,17 @@ TODOs
     + test for bankruptcy (does it terminates properly process instead of moving formard)
 
 - add more test for problems which occured during testing strategy for 2 symbols
-- test you previous strategy based on different buying_decisions settings
-- clean code, write tests
+- add test with 3 where you own 1, short 2nd and buy 3rd
+- test strategy with 3 symbols... all should work good
+
+- test you previous strategy based on different buying_decisions (new position sizer)
+
+- clean code, write any more tests you think
+
+- summarize recent on strategy 1:
+    -> move notebooks
+    -> convert them to pure research
+    -> remove testing of straetegy 1 from backtester codes
+
+- add optimization pipeline!!!
 """

@@ -62,7 +62,7 @@ def test_sorting_cheapest(candidates_10):
 
 
 def test_decide_what_to_buy_1_can(candidates_1):
-    symbols_to_buy = FixedCapitalPerc(capital=10000, capital_perc=0.1).decide_what_to_buy(5000, candidates_1)
+    symbols_to_buy = FixedCapitalPerc(capital_perc=0.1).decide_what_to_buy(5000, candidates_1, capital=10000)
     expected_symbols_to_buy = [{
         'symbol': 'c1',
         'entry_type': 'long',
@@ -75,7 +75,7 @@ def test_decide_what_to_buy_1_can(candidates_1):
 
 
 def test_decide_what_to_buy_2_can(candidates_2):
-    symbols_to_buy = FixedCapitalPerc(sort_type='cheapest', capital=100000, capital_perc=0.1).decide_what_to_buy(9000, candidates_2)
+    symbols_to_buy = FixedCapitalPerc(sort_type='cheapest', capital_perc=0.1).decide_what_to_buy(9000, candidates_2, capital=100000)
     expected_symbols_to_buy = [{
         'symbol': 'c2',
         'entry_type': 'long',
@@ -88,7 +88,7 @@ def test_decide_what_to_buy_2_can(candidates_2):
 
 
 def test_decide_what_to_buy_3_can(candidates_3):
-    symbols_to_buy = FixedCapitalPerc(sort_type='cheapest', capital=100000, capital_perc=0.1).decide_what_to_buy(50000, candidates_3)
+    symbols_to_buy = FixedCapitalPerc(sort_type='cheapest', capital_perc=0.1).decide_what_to_buy(50000, candidates_3, capital=100000)
     """
     ile? (10000 / (103+(103*0.0038))) -> 96
     trx val -> 96 * 103 = 9888

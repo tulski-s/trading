@@ -19,7 +19,7 @@ class PositionSize(metaclass=ABCMeta):
         self.sort_type = sort_type
 
     @abstractmethod
-    def decide_what_to_buy(self, available_money_at_time, candidates):
+    def decide_what_to_buy(self, available_money_at_time, candidates, **kwargs):
         pass
 
     def calculate_fee(self, transaction_value):
@@ -63,23 +63,27 @@ class PositionSize(metaclass=ABCMeta):
     def _buying_decision_msg(self, shares_count, symbol):
         self.log.debug('\t+ Buying decision: {} shares of {}.'.format(shares_count, symbol))
 
+    def _money_and_price_msg(self, money, price):
+        self.log.debug('\t+ Based on available_money: {} and price: {}'.format(money, price))
+
 
 class MaxFirstEncountered(PositionSize):
     """
     Decides to buy maximum amount of shares of the first encountered stock candidate. Candidates are checked according
     to `sort_type` order. If one cannot offord to buy any stock of given candidate - next one is checked. 
     """
-    def decide_what_to_buy(self, available_money_at_time, candidates):
+    def decide_what_to_buy(self, available_money_at_time, candidates, **kwargs):
         for candidate in self.sort(candidates):
             self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
             price = candidate['price']
+            self._money_and_price_msg(available_money_at_time, price)
             shares_count = self.get_shares_count(available_money_at_time, price)
             if shares_count == 0:
                 self._cannot_afford_msg(candidate['symbol'])
-                return None
+                continue
             trx_value = shares_count*price
             expected_fee = self.calculate_fee(trx_value)
-            self.log.debug('\t+ Buying decision: {} shares of {}.'.format(shares_count, candidate['symbol']))
+            self._buying_decision_msg(shares_count, candidate['symbol'])
             return [self._define_symbol_to_buy(candidate, shares_count, trx_value, expected_fee)]
         return []
 
@@ -92,14 +96,18 @@ class FixedCapitalPerc(PositionSize):
     """
     def __init__(self, capital=None, capital_perc=None, **kwargs):
         super().__init__(**kwargs)
-        self.capital = capital
         self.capital_perc = capital_perc
 
-    def decide_what_to_buy(self, available_money_at_time, candidates):
-        single_buy_limit = self.capital*self.capital_perc
+    def decide_what_to_buy(self, available_money_at_time, candidates, **kwargs):
+        capital = kwargs.get('capital')
+        single_buy_limit = capital*self.capital_perc
+        self.log.debug('\t+ Based on capital: {} which gives signle transaction valiue limit: {} ({} perc)'.format(
+            capital, single_buy_limit, self.capital_perc
+        ))
         symbols_to_buy = []
         for candidate in self.sort(candidates):
             price = candidate['price']
+            self._money_and_price_msg(available_money_at_time, price)
             self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
             if available_money_at_time < single_buy_limit:
                 shares_count = self.get_shares_count(available_money_at_time, price)
@@ -110,7 +118,7 @@ class FixedCapitalPerc(PositionSize):
                 continue
             trx_value = shares_count*price
             expected_fee = self.calculate_fee(trx_value)
-            self.log.debug('\t+ Buying decision: {} shares of {}.'.format(shares_count, candidate['symbol']))
+            self._buying_decision_msg(shares_count, candidate['symbol'])
             symbols_to_buy.append(self._define_symbol_to_buy(candidate, shares_count, trx_value, expected_fee))
             available_money_at_time -= (trx_value+expected_fee)
         return symbols_to_buy
@@ -119,6 +127,8 @@ class FixedCapitalPerc(PositionSize):
 """
 TODO(slaw):
 - MODEL 3: THE PERCENT RISK MODEL  -> 156 strona z ksiazki "trade your way...""
+- MODEL 4 (with changes in backtester) -> adjusting size of the positions everyday so that you always has certain amount of money
+           at risk. But that's later. Don't worry about iut now
 """
 
 

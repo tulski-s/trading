@@ -19,10 +19,12 @@ from commons import (
 
 
 
-def get_strategy_signals(symbol):
+def get_strategy_signals(symbols):
     # TODO(2019-02-09) This strategy here is just for testing purposes... Will remove it soon.
     data = GPWData()
-    etf = data.load(symbols=symbol)
+    etfs = data.load(symbols=symbols)
+    if not isinstance(etfs, dict):
+        etfs = {symbols: etfs}
 
     # strategy params (should come as params but hardcoded here for simplicity)
     time_window=3
@@ -30,30 +32,31 @@ def get_strategy_signals(symbol):
     short_threshold=30
     
     # calculate signals
-    for price in ('high', 'low', 'close'):
-        etf.loc[:, 'ema_{}_{}'.format(time_window, price)] = etf[price].ewm(span=time_window, adjust=False).mean()
-    etf.loc[:, 'adr'] = etf['ema_{}_high'.format(time_window)] - etf['ema_{}_low'.format(time_window)]
-    etf.loc[:, 'perc_range'] = \
-        ((etf['ema_{}_high'.format(time_window)]-etf['ema_{}_close'.format(time_window)])*100)/etf['adr']
-    
-    for signal_type in ('long', 'short'):
-        if signal_type == 'long':
-            etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] > long_threshold, 1, 0)
-        elif signal_type == 'short':
-            etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] < short_threshold, 1, 0)
-        etf.loc[:, 'previous_potential_signal'] = etf['potential_signal'].shift(1)
-        etf['previous_potential_signal'].fillna(value=0, inplace=True)
-        etf.loc[:, 'entry_{}'.format(signal_type)] = np.where(
-            (etf['potential_signal']==1) & (etf['previous_potential_signal']==0), 1, 0
-        )
-        etf.loc[:, 'exit_{}'.format(signal_type)] = np.where(
-            (etf['potential_signal']==0) & (etf['previous_potential_signal']==1), 1, 0
-        )
-        etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
+    for sym, etf in etfs.items():
+        for price in ('high', 'low', 'close'):
+            etf.loc[:, 'ema_{}_{}'.format(time_window, price)] = etf[price].ewm(span=time_window, adjust=False).mean()
+        etf.loc[:, 'adr'] = etf['ema_{}_high'.format(time_window)] - etf['ema_{}_low'.format(time_window)]
+        etf.loc[:, 'perc_range'] = \
+            ((etf['ema_{}_high'.format(time_window)]-etf['ema_{}_close'.format(time_window)])*100)/etf['adr']
+        
+        for signal_type in ('long', 'short'):
+            if signal_type == 'long':
+                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] > long_threshold, 1, 0)
+            elif signal_type == 'short':
+                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] < short_threshold, 1, 0)
+            etf.loc[:, 'previous_potential_signal'] = etf['potential_signal'].shift(1)
+            etf['previous_potential_signal'].fillna(value=0, inplace=True)
+            etf.loc[:, 'entry_{}'.format(signal_type)] = np.where(
+                (etf['potential_signal']==1) & (etf['previous_potential_signal']==0), 1, 0
+            )
+            etf.loc[:, 'exit_{}'.format(signal_type)] = np.where(
+                (etf['potential_signal']==0) & (etf['previous_potential_signal']==1), 1, 0
+            )
+            etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
 
-    etf_t, etf_v = data.split_into_subsets({'symbol': etf}, 0.5)
+    etfs_t, etfs_v = data.split_into_subsets(etfs, 0.5)
 
-    return etf_t, etf_v
+    return etfs_t, etfs_v
 
 
 
@@ -92,9 +95,9 @@ class Backtester():
         if test_days:
             days = days[:test_days]
 
-        for ds in days:
+        for idx, ds in enumerate(days):
             self.log.debug('['+15*'-'+str(ds)[0:10]+15*'-'+']')
-            self.log.debug('\tAvailable symbols: ' + str(symbols_in_day[ds]))
+            self.log.debug('\tSymbols available in given session: ' + str(symbols_in_day[ds]))
 
             owned_shares = list(self._owned_shares.keys())
             self.log.debug('\t[-- SELL START --]')
@@ -116,6 +119,8 @@ class Backtester():
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     self.log.debug('\t\t EXIT SHORT')
                     self._sell(symbol, self.signals[symbol][self.price_label], ds)
+                else:
+                    self.log.debug('\t+ Not exiting from: ' + symbol)
             self.log.debug('\t[-- SELL END --]')
             self.log.debug('\t[-- BUY START --]')
             purchease_candidates = []
@@ -126,10 +131,13 @@ class Backtester():
                     purchease_candidates.append(self._define_candidate(sym, ds, 'short'))
             if purchease_candidates == []:
                 self.log.debug('\t\tNo candidates to buy.')
+            else:
+                self.log.debug('\tCandidates to buy: {}'.format([c['symbol'] for c in purchease_candidates]))
 
             symbols_to_buy = self.position_sizer.decide_what_to_buy(
-                # multplication is to create new object instead of using actual pointer
-                self._available_money*1.0, purchease_candidates
+                self._available_money*1.0,  # multplication is to create new object instead of using actual pointer
+                purchease_candidates,
+                capital = self._net_account_value[days[idx-1]] if idx > 0 else self.init_capital
             )
 
             for trx_details in symbols_to_buy:
@@ -174,6 +182,10 @@ class Backtester():
         self._available_money += trx_value_gross
 
         self.log.debug('\t\tAvailable money after selling: ' + str(self._available_money))
+        if self._available_money < 0:
+            raise ValueError(
+                "Account bankrupted! Money available after sell is: {}. Backtester cannot run anymore!".format(self._available_money)
+            )
         
         self._trades[self._owned_shares[symbol]['trx_id']].update({
             'sell_ds': ds,
@@ -266,12 +278,13 @@ class Backtester():
 
 
 def run_test_strategy(days=-1, debug=False):
-    sn1, sn2 = 'ETFW20L', 'ETFSP500'
-    stock_1_test, stock_1_val = get_strategy_signals(sn1)
-    stock_2_test, stock_2_val = get_strategy_signals(sn2)
+    # symbols = 'ETFW20L'
+    symbols = 'ETFSP500'
+    # symbols = ['ETFW20L', 'ETFSP500']
+    test_signals, validation_signals = get_strategy_signals(symbols)
 
     position_sizer = MaxFirstEncountered(debug=debug, sort_type='cheapest')
-    backtester = Backtester(stock_1_test, position_sizer=position_sizer, debug=debug)
+    backtester = Backtester(test_signals, position_sizer=position_sizer, debug=debug)
     if days == -1:
         results, trades = backtester.run()
     else:
@@ -289,6 +302,21 @@ if __name__ == '__main__':
 
 """
 TODOs
+- test you previous strategy with 2 symbols (previously I was getting a lot of warnings due to wrong split)
+    OK + TODEBUG: how I ended up with holding 2 shares with MaxFirstEncountered. That is theoretically possible...
+               but want to double check that.
+    
+    + fix and add test for following:
+        On 2011-06-09 I'm entering short for ETFSP500. As this is short sell - it adds me money to account. 
+        After that buying short I have 18679 available money.
+
+        On 2011-06-10 I'm getting signal for ETFW20L to go long. As my available money is 18679 - I'm buiying a lot of stocks
+        
+        On 2011-06-15 I'm exiting from short on ETFSP500 -> getting bankrupt!!! 
+
+    + test for bankruptcy (does it terminates properly process instead of moving formard)
+
+- add more test for problems which occured during testing strategy for 2 symbols
 - test you previous strategy based on different buying_decisions settings
 - clean code, write tests
 """

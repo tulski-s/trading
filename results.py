@@ -51,16 +51,15 @@ def evaluate(results_df, trades):
         # trade was not closed after backtest
         if ('sell_value_gross' not in trade.keys()):
             continue
-        # proft: sold - bought
+        # proft: gained - paid
         if trade['type'] == 'long':
             profit = trade['sell_value_gross'] - trade['trx_value_gross']
         elif trade['type'] == 'short':
-            profit =  trade['trx_value_gross'] - abs(trade['sell_value_gross'])
+            profit =  trade['trx_value_gross'] - trade['sell_value_gross']
         if profit > 0:
             profits.append(profit)
         else:
             losses.append(profit)
-
     no_trades = len(trades)
     avg_win = sum(profits)/len(profits)
     avg_loss = abs(sum(losses)/len(losses))

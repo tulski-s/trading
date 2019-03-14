@@ -100,7 +100,7 @@ class FixedCapitalPerc(PositionSize):
 
     def decide_what_to_buy(self, available_money_at_time, candidates, **kwargs):
         capital = kwargs.get('capital')
-        single_buy_limit = capital*self.capital_perc
+        single_buy_limit = round(capital*self.capital_perc, 2)
         self.log.debug('\t+ Based on capital: {} which gives signle transaction valiue limit: {} ({} perc)'.format(
             capital, single_buy_limit, self.capital_perc
         ))

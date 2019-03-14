@@ -171,8 +171,7 @@ class Backtester():
         shares_count = self._owned_shares[symbol]['cnt']
         fee = self.position_sizer.calculate_fee(abs(shares_count)*price)
         trx_value = (abs(shares_count)*price)
-        trx_value_gross = trx_value - fee
-
+        
         trx_id = self._owned_shares[symbol]['trx_id']
 
         self.log.debug('\t\tSelling {} (Transaction id: {})'.format(symbol, trx_id))
@@ -182,23 +181,15 @@ class Backtester():
         self.log.debug('\t\t\tTransaction value (no fee): ' + str(trx_value))
         self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value - fee))
         
-        if exit_type == 'short':
-            # have to return whole borrowed money first
-            self._available_money -= self._money_from_short[trx_id] 
-        self._available_money += trx_value_gross
-        """
-        trx_value_gross jest ujemne...
-
-        tutaj musze 
-            1) oddac pieniadze 
-            2) wziac co zostalo albo zabrac z tego co mam zeby wyszlo na zero
-        
-        from_sale = abs(trx_value)-fee 
-
-        1) available_money = available_money - money_from_short   <--- oddaje
-        2) available_money = available_money + from_sale  <--- biore to co ze sprzedazy
-        """
-
+        if exit_type == 'long':
+            trx_value_gross = trx_value - fee
+            self._available_money += trx_value_gross
+        elif exit_type == 'short':
+            trx_value_gross = trx_value + fee
+            self._available_money += self._money_from_short[trx_id]
+            self._money_from_short.pop(trx_id)
+            self._available_money -= trx_value_gross
+  
         self.log.debug('\t\tAvailable money after selling: ' + str(self._available_money))
         if self._available_money < 0:
             raise ValueError(
@@ -218,15 +209,14 @@ class Backtester():
         self.log.debug('\t\tBuying {} (Transaction id: {})'.format(trx['symbol'], trx_id))
         
         if trx['entry_type'] == 'long':
-            trx_value_gross = trx['trx_value'] + trx['fee']
+            trx_value_gross = trx['trx_value'] + trx['fee'] # i need to spend
             self._owned_shares[trx['symbol']] = {'cnt': trx['shares_count']}
             self._available_money -= trx_value_gross
                     
         elif trx['entry_type'] == 'short':
-            trx_value_gross = abs(trx['trx_value']) + trx['fee']
+            trx_value_gross = trx['trx_value'] - trx['fee'] # i will get
             self._owned_shares[trx['symbol']] = {'cnt': -trx['shares_count']}
             self._available_money -= trx['fee']
-
             self._money_from_short[trx_id] = trx['trx_value']
 
         self._owned_shares[trx['symbol']]['trx_id'] = trx_id
@@ -272,7 +262,7 @@ class Backtester():
             self._backup_close_prices[symbol] = (price, ds)
 
         # account value (can be negative) + avaiable money + any borrowed moneny
-        nav = _account_value + self._available_money + sum([m for m in self._money_from_short[trx_id].values()]) 
+        nav = _account_value + self._available_money + sum([m for m in self._money_from_short.values()]) 
         self._account_value[ds] = _account_value
         self._net_account_value[ds] = nav
         self._rate_of_return[ds] = ((nav-self.init_capital)/self.init_capital)*100
@@ -326,21 +316,22 @@ if __name__ == '__main__':
 """
 TODOs
 - test you previous strategy with 2 symbols (previously I was getting a lot of warnings due to wrong split)
-    + fix and add test for following:
+    OK + fix issue with shorting
+    OK + add test for following:
         On 2011-06-09 I'm entering short for ETFSP500. As this is short sell - it adds me money to account. 
         After that buying short I have 18679 available money.
-
         On 2011-06-10 I'm getting signal for ETFW20L to go long. As my available money is 18679 - I'm buiying a lot of stocks
-        
         On 2011-06-15 I'm exiting from short on ETFSP500 -> getting bankrupt!!! 
-
+    
     + test for bankruptcy (does it terminates properly process instead of moving formard)
 
-- add more test for problems which occured during testing strategy for 2 symbols
 - add test with 3 where you own 1, short 2nd and buy 3rd
-- test strategy with 3 symbols... all should work good
+
+- test your strategy with 3 symbols... all should work good
 
 - test you previous strategy based on different buying_decisions (new position sizer)
+
+- change everywhere key name... trx_value_gross -> sth like `trx_value_fee_inc` bo to tak na prawde nie jest gross.....
 
 - clean code, write any more tests you think
 

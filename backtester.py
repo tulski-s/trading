@@ -10,6 +10,7 @@ from gpw_data import GPWData
 
 from position_size import (
     MaxFirstEncountered,
+    FixedCapitalPerc,
 )
 
 from commons import (
@@ -268,7 +269,7 @@ class Backtester():
         self._rate_of_return[ds] = ((nav-self.init_capital)/self.init_capital)*100
 
         self.log.debug('Available money is: ' + str(self._available_money))
-        self.log.debug('Shares: ' + ','.join(sorted(['{}: {}'.format(k, v['cnt']) for k,v in self._owned_shares.items()])))
+        self.log.debug('Shares: ' + ', '.join(sorted(['{}: {}'.format(k, v['cnt']) for k,v in self._owned_shares.items()])))
         self.log.debug('Net Account Value is: ' + str(nav))
         self.log.debug('Rate of return: ' + str(self._rate_of_return[ds]))
 
@@ -292,11 +293,14 @@ class Backtester():
 
 def run_test_strategy(days=-1, debug=False):
     # symbols = 'ETFW20L'
-    symbols = 'ETFSP500'
-    # symbols = ['ETFW20L', 'ETFSP500']
+    # symbols = 'ETFSP500'
+    symbols = ['ETFW20L', 'ETFSP500', 'ETFDAX']
     test_signals, validation_signals = get_strategy_signals(symbols)
 
-    position_sizer = MaxFirstEncountered(debug=debug, sort_type='cheapest')
+    # position_sizer = MaxFirstEncountered(debug=debug, sort_type='cheapest')
+
+    position_sizer = FixedCapitalPerc(debug=debug, sort_type='cheapest', capital_perc=0.2)
+
     backtester = Backtester(test_signals, position_sizer=position_sizer, debug=debug)
     if days == -1:
         results, trades = backtester.run()
@@ -314,26 +318,12 @@ if __name__ == '__main__':
 
 
 """
-TODOs
-- test you previous strategy with 2 symbols (previously I was getting a lot of warnings due to wrong split)
-    OK + fix issue with shorting
-    OK + add test for following:
-        On 2011-06-09 I'm entering short for ETFSP500. As this is short sell - it adds me money to account. 
-        After that buying short I have 18679 available money.
-        On 2011-06-10 I'm getting signal for ETFW20L to go long. As my available money is 18679 - I'm buiying a lot of stocks
-        On 2011-06-15 I'm exiting from short on ETFSP500 -> getting bankrupt!!! 
-    
-    + test for bankruptcy (does it terminates properly process instead of moving formard)
-
+TODOs:
+- change everywhere key name... trx_value_gross -> sth like `trx_value_fee_inc` bo to tak na prawde nie jest gross.....
 - add test with 3 where you own 1, short 2nd and buy 3rd
 
-- test your strategy with 3 symbols... all should work good
-
-- test you previous strategy based on different buying_decisions (new position sizer)
-
-- change everywhere key name... trx_value_gross -> sth like `trx_value_fee_inc` bo to tak na prawde nie jest gross.....
-
 - clean code, write any more tests you think
+    + remove get_strategy_signals function from backterter code
 
 - summarize recent on strategy 1:
     -> move notebooks

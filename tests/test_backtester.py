@@ -304,3 +304,11 @@ def test_functional_backtester_4_days_trades_TEST_SIGS_2(backtester):
     }    
     assert(expected_trades == trades)
 
+
+@pytest.mark.parametrize('backtester', [(signals_test_sigs_2(), max_first_encountered_alpha_sizer(), 5000000)], indirect=True)
+def test_bankruptcy(backtester):
+    with pytest.raises(ValueError):
+        results, trades = backtester.run(test_days=3)
+
+
+

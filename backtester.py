@@ -1,64 +1,10 @@
-# build-in
-import logging
-
 # 3rd party
-import numpy as np
 import pandas as pd
 
 # custom
-from gpw_data import GPWData
-
-from position_size import (
-    MaxFirstEncountered,
-    FixedCapitalPerc,
-)
-
 from commons import (
     setup_logging,
-    get_parser,
 )
-
-
-
-def get_strategy_signals(symbols):
-    # TODO(2019-02-09) This strategy here is just for testing purposes... Will remove it soon.
-    data = GPWData()
-    etfs = data.load(symbols=symbols)
-    if not isinstance(etfs, dict):
-        etfs = {symbols: etfs}
-
-    # strategy params (should come as params but hardcoded here for simplicity)
-    time_window=3
-    long_threshold=35
-    short_threshold=30
-    
-    # calculate signals
-    for sym, etf in etfs.items():
-        for price in ('high', 'low', 'close'):
-            etf.loc[:, 'ema_{}_{}'.format(time_window, price)] = etf[price].ewm(span=time_window, adjust=False).mean()
-        etf.loc[:, 'adr'] = etf['ema_{}_high'.format(time_window)] - etf['ema_{}_low'.format(time_window)]
-        etf.loc[:, 'perc_range'] = \
-            ((etf['ema_{}_high'.format(time_window)]-etf['ema_{}_close'.format(time_window)])*100)/etf['adr']
-        
-        for signal_type in ('long', 'short'):
-            if signal_type == 'long':
-                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] > long_threshold, 1, 0)
-            elif signal_type == 'short':
-                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] < short_threshold, 1, 0)
-            etf.loc[:, 'previous_potential_signal'] = etf['potential_signal'].shift(1)
-            etf['previous_potential_signal'].fillna(value=0, inplace=True)
-            etf.loc[:, 'entry_{}'.format(signal_type)] = np.where(
-                (etf['potential_signal']==1) & (etf['previous_potential_signal']==0), 1, 0
-            )
-            etf.loc[:, 'exit_{}'.format(signal_type)] = np.where(
-                (etf['potential_signal']==0) & (etf['previous_potential_signal']==1), 1, 0
-            )
-            etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
-
-    etfs_t, etfs_v = data.split_into_subsets(etfs, 0.5)
-
-    return etfs_t, etfs_v
-
 
 
 class Backtester():
@@ -302,41 +248,13 @@ class Backtester():
         return df
 
 
-def run_test_strategy(days=-1, debug=False):
-    # symbols = 'ETFW20L'
-    # symbols = 'ETFSP500'
-    symbols = ['ETFW20L', 'ETFSP500', 'ETFDAX']
-    test_signals, validation_signals = get_strategy_signals(symbols)
-
-    # position_sizer = MaxFirstEncountered(debug=debug, sort_type='cheapest')
-
-    position_sizer = FixedCapitalPerc(debug=debug, sort_type='cheapest', capital_perc=0.2)
-
-    backtester = Backtester(test_signals, position_sizer=position_sizer, debug=debug)
-    if days == -1:
-        results, trades = backtester.run()
-    else:
-        results, trades = backtester.run(test_days=days)
-
-    return results, trades 
-
-
-if __name__ == '__main__':
-    parser = get_parser()
-    parser.add_argument('--days', '-d', type=int, default=-1, help='number of days to run backtester for')
-    args = parser.parse_args()
-    run_test_strategy(args.days, args.debug)
-
-
 """
 TODOs:
-- clean code, write any more tests you think
-    + remove get_strategy_signals function from backterter code
-
 - summarize recent on strategy 1:
     -> move notebooks
     -> convert them to pure research
-    -> remove testing of straetegy 1 from backtester codes
-
+- work on strategy 2
 - add optimization pipeline!!!
+    -> optimize strategy 2
+    -> run optimization for previous strategy
 """

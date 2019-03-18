@@ -1,9 +1,9 @@
 """
-Strategia 1 - Swing trading on ETFs
+Strategy 1 - Swing trading on ETFs
 source: https://seekingalpha.com/instablog/20641661-marc-cohn/2770913-a-swing-trading-strategy-for-nipping-profits-from-short-term-spikes-in-etf-prices
 
-Momentum trading relies on the principle that money follows money, and investors like to chase winners. Trends, however, never f
-ollow a straight line. This system relies on recent intraday highs and lows to generate trading signals that detect relatively strong, 
+Momentum trading relies on the principle that money follows money, and investors like to chase winners. Trends, however, never
+follow a straight line. This system relies on recent intraday highs and lows to generate trading signals that detect relatively strong, 
 short-term upward or downward price movements. These price swings can indicate a short-term price spike away from the trend, with the 
 expectation that the price will  revert to the mean in a short amount of time.
 
@@ -68,86 +68,94 @@ I should be able to execute this strategy in real in Poland
 # Step 1 - For single ETF create chart with etries and exits signals for both long and short trades. That should give you a little bit more
 # intuition about the systems
 
-# buil-in
-import datetime
+# built-in
+import sys
+sys.path.insert(0, '/Users/slaw/osobiste/trading')
 
 # 3rd party
 import numpy as np
-import pandas as pd
 
 # custom
 from gpw_data import GPWData
+from backtester import Backtester
+
+from position_size import (
+    MaxFirstEncountered,
+    FixedCapitalPerc,
+)
+
+from commons import (
+    get_parser,
+)
 
 
-def main():
+def get_strategy_signals(symbols):
     data = GPWData()
-    etfw20l = data.load(symbols='ETFW20L')
-    
-    # params
-    time_window = 3
-    long_threshold = 35
-    short_threshold = 25
+    etfs = data.load(symbols=symbols)
+    if not isinstance(etfs, dict):
+        etfs = {symbols: etfs}
 
+    # strategy params (should come as params but hardcoded here for simplicity)
+    time_window=3
+    long_threshold=35
+    short_threshold=30
+    
     # calculate signals
-    # etf10 = pd.DataFrame(etfw20l.head(10)) # creates new DataFrame object (not a copy of df)
-    for price in ('high', 'low', 'close'):
-        etfw20l.loc[:, 'ema_{}_{}'.format(time_window, price)] = etfw20l[price].ewm(span=time_window, adjust=False).mean()
-    # calculate ADR = EMA_H - EMA_L
-    etfw20l.loc[:, 'adr'] = etfw20l['ema_{}_high'.format(time_window)] - etfw20l['ema_{}_low'.format(time_window)]
-    # calculate perc = ((EMA_H - EMA_C)*100)/ADR
-    etfw20l.loc[:, 'perc_range'] = ((etfw20l['ema_{}_high'.format(time_window)]-etfw20l['ema_{}_close'.format(time_window)])*100)/etfw20l['adr']
+    for sym, etf in etfs.items():
+        for price in ('high', 'low', 'close'):
+            etf.loc[:, 'ema_{}_{}'.format(time_window, price)] = etf[price].ewm(span=time_window, adjust=False).mean()
+        etf.loc[:, 'adr'] = etf['ema_{}_high'.format(time_window)] - etf['ema_{}_low'.format(time_window)]
+        etf.loc[:, 'perc_range'] = \
+            ((etf['ema_{}_high'.format(time_window)]-etf['ema_{}_close'.format(time_window)])*100)/etf['adr']
+        
+        for signal_type in ('long', 'short'):
+            if signal_type == 'long':
+                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] > long_threshold, 1, 0)
+            elif signal_type == 'short':
+                etf.loc[:, 'potential_signal'] = np.where(etf['perc_range'] < short_threshold, 1, 0)
+            etf.loc[:, 'previous_potential_signal'] = etf['potential_signal'].shift(1)
+            etf['previous_potential_signal'].fillna(value=0, inplace=True)
+            etf.loc[:, 'entry_{}'.format(signal_type)] = np.where(
+                (etf['potential_signal']==1) & (etf['previous_potential_signal']==0), 1, 0
+            )
+            etf.loc[:, 'exit_{}'.format(signal_type)] = np.where(
+                (etf['potential_signal']==0) & (etf['previous_potential_signal']==1), 1, 0
+            )
+            etf.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
 
-    for signal_type in ('long', 'short'):
-        if signal_type == 'long':
-            etfw20l.loc[:, 'potential_signal'] = np.where(etfw20l['perc_range'] > long_threshold, 1, 0)
-        elif signal_type == 'short':
-            etfw20l.loc[:, 'potential_signal'] = np.where(etfw20l['perc_range'] < short_threshold, 1, 0)
-        etfw20l.loc[:, 'previous_potential_signal'] = etfw20l['potential_signal'].shift(1)
-        etfw20l['previous_potential_signal'].fillna(value=0, inplace=True)
-        etfw20l.loc[:, 'entry_{}'.format(signal_type)] = np.where(
-            (etfw20l['potential_signal']==1) & (etfw20l['previous_potential_signal']==0), 1, 0
-        )
-        etfw20l.loc[:, 'exit_{}'.format(signal_type)] = np.where(
-            (etfw20l['potential_signal']==0) & (etfw20l['previous_potential_signal']==1), 1, 0
-        )
-        etfw20l.drop(['potential_signal', 'previous_potential_signal'], axis=1, inplace=True)
+    etfs_t, etfs_v = data.split_into_subsets(etfs, 0.5)
 
-    # preview results
-    print(etfw20l.head(10))
+    return etfs_t, etfs_v
 
-    # strategy setup
-    account = 10000 #  10k PLN
-    trades = {}
 
-    """
-    how to visualize entry and exit signals?
-    - vertical lines in points of signal
-        -> https://stackoverflow.com/questions/24988448/how-to-draw-vertical-lines-on-a-given-plot-in-matplotlib
-    - are between could be colorized (but with transparency)
-        -> https://stackoverflow.com/questions/23248435/fill-between-two-vertical-lines-in-matplotlib
-    - there should be ability to zoom in/out on the graph
+def run_test_strategy_ETFW20L(days=-1, debug=False):
+    symbols = 'ETFW20L'
+    test_signals, validation_signals = get_strategy_signals(symbols)
+    position_sizer = MaxFirstEncountered(debug=debug, sort_type='cheapest')
+    backtester = Backtester(test_signals, position_sizer=position_sizer, debug=debug)
+    if days == -1:
+        results, trades = backtester.run()
+    else:
+        results, trades = backtester.run(test_days=days)
+    return results, trades
 
-    I can iterate over dataframe to get enter/exit dates span for long/short
-        -> https://stackoverflow.com/questions/16476924/how-to-iterate-over-rows-in-a-dataframe-in-pandas
-    Or better, get indicies values for signals and zip them together
-    
-    When I've gathered it simply draw it an line chart
-    """
 
-    idxs_entry_long = etfw20l.index[etfw20l['entry_long'] == 1].tolist()
-    idxs_exit_long = etfw20l.index[etfw20l['exit_long'] == 1].tolist()
-    if len(idxs_entry_long) > len(idxs_exit_long):
-        idxs_entry_long = idxs_entry_long[:-1]
-    elif len(idxs_exit_long) > len(idxs_entry_long):
-        idxs_exit_long = idxs_exit_long[:-1]
-    elif len(idxs_entry_long) != len(idxs_exit_long):
-        # logically they can differ only by 1, so if its not the case sth is wrong
-        raise ValueError
-    long_periods = list(zip(idxs_entry_long, idxs_exit_long))
-    print(long_periods)
+def run_test_strategy_etfs(days=-1, debug=False):
+    symbols = ['ETFW20L', 'ETFSP500', 'ETFDAX']
+    test_signals, validation_signals = get_strategy_signals(symbols)
+    position_sizer = FixedCapitalPerc(debug=debug, sort_type='cheapest', capital_perc=0.2)
+    backtester = Backtester(test_signals, position_sizer=position_sizer, debug=debug)
+    if days == -1:
+        results, trades = backtester.run()
+    else:
+        results, trades = backtester.run(test_days=days)
 
+    return results, trades
 
 
 if __name__ == '__main__':
-    main()
+    parser = get_parser()
+    parser.add_argument('--days', '-d', type=int, default=-1, help='number of days to run backtester for')
+    args = parser.parse_args()
+    run_test_strategy_etfs(args.days, args.debug)
 

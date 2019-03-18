@@ -224,6 +224,8 @@ class Backtester():
             self._available_money -= trx['fee']
             self._money_from_short[trx_id] = trx['trx_value']
 
+        self._available_money = round(self._available_money, 2)
+
         self._owned_shares[trx['symbol']]['trx_id'] = trx_id
         self._trades[trx_id] = {
             'buy_ds': ds,
@@ -328,9 +330,6 @@ if __name__ == '__main__':
 
 """
 TODOs:
-- fix broken test cases after changing how capital is calculated
-- add test with 3 signals where you own 1, short 2nd and buy 3rd.... <- nie no serio by sie ten przydal
-
 - clean code, write any more tests you think
     + remove get_strategy_signals function from backterter code
 

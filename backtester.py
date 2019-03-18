@@ -122,6 +122,13 @@ class Backtester():
                     self._sell(symbol, self.signals[symbol][self.price_label], ds, 'short')
                 else:
                     self.log.debug('\t+ Not exiting from: ' + symbol)
+            
+            if self._available_money < 0:
+                raise ValueError(
+                    "Account bankrupted! Money after sells is: {}. Backtester cannot run anymore!".format(
+                        self._available_money
+                    ))
+
             self.log.debug('\t[-- SELL END --]')
             self.log.debug('\t[-- BUY START --]')
             purchease_candidates = []
@@ -135,10 +142,11 @@ class Backtester():
             else:
                 self.log.debug('\tCandidates to buy: {}'.format([c['symbol'] for c in purchease_candidates]))
 
+            capital_at_time = self._available_money + self._calculate_account_value(ds) + self._get_money_from_short()
             symbols_to_buy = self.position_sizer.decide_what_to_buy(
                 self._available_money*1.0,  # multplication is to create new object instead of using actual pointer
                 purchease_candidates,
-                capital = self._net_account_value[days[idx-1]] if idx > 0 else self.init_capital
+                capital = capital_at_time
             )
 
             for trx_details in symbols_to_buy:
@@ -183,24 +191,20 @@ class Backtester():
         self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value - fee))
         
         if exit_type == 'long':
-            trx_value_gross = trx_value - fee
-            self._available_money += trx_value_gross
+            trx_value_with_fee = trx_value - fee
+            self._available_money += trx_value_with_fee
         elif exit_type == 'short':
-            trx_value_gross = trx_value + fee
+            trx_value_with_fee = trx_value + fee
             self._available_money += self._money_from_short[trx_id]
             self._money_from_short.pop(trx_id)
-            self._available_money -= trx_value_gross
+            self._available_money -= trx_value_with_fee
   
         self.log.debug('\t\tAvailable money after selling: ' + str(self._available_money))
-        if self._available_money < 0:
-            raise ValueError(
-                "Account bankrupted! Money available after sell is: {}. Backtester cannot run anymore!".format(self._available_money)
-            )
         
         self._trades[self._owned_shares[symbol]['trx_id']].update({
             'sell_ds': ds,
             'sell_value_no_fee': trx_value,
-            'sell_value_gross': trx_value_gross,
+            'sell_value_with_fee': trx_value_with_fee,
         })
         self._owned_shares.pop(symbol)
 
@@ -210,12 +214,12 @@ class Backtester():
         self.log.debug('\t\tBuying {} (Transaction id: {})'.format(trx['symbol'], trx_id))
         
         if trx['entry_type'] == 'long':
-            trx_value_gross = trx['trx_value'] + trx['fee'] # i need to spend
+            trx_value_with_fee = trx['trx_value'] + trx['fee'] # i need to spend
             self._owned_shares[trx['symbol']] = {'cnt': trx['shares_count']}
-            self._available_money -= trx_value_gross
+            self._available_money -= trx_value_with_fee
                     
         elif trx['entry_type'] == 'short':
-            trx_value_gross = trx['trx_value'] - trx['fee'] # i will get
+            trx_value_with_fee = trx['trx_value'] - trx['fee'] # i will get
             self._owned_shares[trx['symbol']] = {'cnt': -trx['shares_count']}
             self._available_money -= trx['fee']
             self._money_from_short[trx_id] = trx['trx_value']
@@ -225,14 +229,14 @@ class Backtester():
             'buy_ds': ds,
             'type': trx['entry_type'],
             'trx_value_no_fee': trx['trx_value'],
-            'trx_value_gross': trx_value_gross,
+            'trx_value_with_fee': trx_value_with_fee,
         }
 
         self.log.debug('\t\t\tNo. of bought shares: ' + str(int(trx['shares_count'])))
         self.log.debug('\t\t\tBuy price: ' + str(trx['price']))
         self.log.debug('\t\t\tFee: ' + str(trx['fee']))
         self.log.debug('\t\t\tTransaction value (no fee): ' + str(trx['trx_value']))
-        self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value_gross))
+        self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value_with_fee))
         self.log.debug('\t\tAvailable money after buying: ' + str(self._available_money))
         if trx['entry_type'] == 'short':
             self.log.debug('\t\tMoney from short sell: ' + str(self._money_from_short[trx_id]))
@@ -245,9 +249,7 @@ class Backtester():
             'price': self.signals[symbol][self.price_label][ds]
         }
 
-    def _summarize_day(self, ds):
-        """Sets up summaries after finished session day."""
-        self.log.debug('[ SUMMARIZE SESSION {} ]'.format(str(ds)[:10]))
+    def _calculate_account_value(self, ds):
         _account_value = 0
         for symbol, vals in self._owned_shares.items():
             try:
@@ -258,12 +260,19 @@ class Backtester():
                 self.log.warning('\t\t!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
                     price_ds, symbol, ds
                 ))
-
             _account_value += vals['cnt'] * price
             self._backup_close_prices[symbol] = (price, ds)
+        return _account_value
 
+    def _get_money_from_short(self):
+        return sum([m for m in self._money_from_short.values()])
+
+    def _summarize_day(self, ds):
+        """Sets up summaries after finished session day."""
+        self.log.debug('[ SUMMARIZE SESSION {} ]'.format(str(ds)[:10]))
+        _account_value = self._calculate_account_value(ds)
         # account value (can be negative) + avaiable money + any borrowed moneny
-        nav = _account_value + self._available_money + sum([m for m in self._money_from_short.values()]) 
+        nav = _account_value + self._available_money + self._get_money_from_short()
         self._account_value[ds] = _account_value
         self._net_account_value[ds] = nav
         self._rate_of_return[ds] = ((nav-self.init_capital)/self.init_capital)*100
@@ -319,8 +328,8 @@ if __name__ == '__main__':
 
 """
 TODOs:
-- change everywhere key name... trx_value_gross -> sth like `trx_value_fee_inc` bo to tak na prawde nie jest gross.....
-- add test with 3 where you own 1, short 2nd and buy 3rd
+- fix broken test cases after changing how capital is calculated
+- add test with 3 signals where you own 1, short 2nd and buy 3rd.... <- nie no serio by sie ten przydal
 
 - clean code, write any more tests you think
     + remove get_strategy_signals function from backterter code

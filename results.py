@@ -49,13 +49,13 @@ def evaluate(results_df, trades):
     losses = []
     for trade in trades.values():
         # trade was not closed after backtest
-        if ('sell_value_gross' not in trade.keys()):
+        if ('sell_value_with_fee' not in trade.keys()):
             continue
         # proft: gained - paid
         if trade['type'] == 'long':
-            profit = trade['sell_value_gross'] - trade['trx_value_gross']
+            profit = trade['sell_value_with_fee'] - trade['trx_value_with_fee']
         elif trade['type'] == 'short':
-            profit =  trade['trx_value_gross'] - trade['sell_value_gross']
+            profit =  trade['trx_value_with_fee'] - trade['sell_value_with_fee']
         if profit > 0:
             profits.append(profit)
         else:

@@ -246,15 +246,3 @@ class Backtester():
             temp_df.drop('ds', axis=1, inplace=True)
             df = pd.concat([df, temp_df], axis=1)
         return df
-
-
-"""
-TODOs:
-- summarize recent on strategy 1:
-    -> move notebooks
-    -> convert them to pure research
-- work on strategy 2
-- add optimization pipeline!!!
-    -> optimize strategy 2
-    -> run optimization for previous strategy
-"""

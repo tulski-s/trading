@@ -131,7 +131,7 @@ class GPWData():
             return symbols
         elif type_ == 'etfs':
             return list(self.collector.get_etfs_symbols().keys())
-        elif type == 'index':
+        elif type_ == 'index':
             return self.indicies_stocks[index]
 
     def _output_path(self, symbol):

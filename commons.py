@@ -10,13 +10,11 @@ def setup_logging(path='./logging.yaml', logger=None, debug=False):
             logger = 'simple_info'
         elif debug == True:
      	   logger = 'simple_debug'
-
     if os.path.exists(path):
         with open(path, 'rt') as fh:
             config = yaml.safe_load(fh.read())
         logging.config.dictConfig(config)
-        log = logging.getLogger(logger)    
-    return log
+    return logging.getLogger(logger)
 
 
 def get_parser():

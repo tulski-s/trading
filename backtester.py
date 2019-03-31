@@ -105,9 +105,10 @@ class Backtester():
 
     def _prepare_signal(self, signals):
         """Converts to expected dictionary form."""
+        _signals = signals.copy()
         for k, v in signals.items():
-            signals[k] = v.to_dict()
-        return signals
+            _signals[k] = v.to_dict()
+        return _signals
 
     def _reset_backtest_state(self):
         """Resets all attributes used during backtest run."""

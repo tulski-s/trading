@@ -1,8 +1,3 @@
-
-
-# custom
-from backtester import run_test_strategy
-
 def evaluate(results_df, trades):
     """
     Input: results dataframe from backtester run
@@ -76,13 +71,7 @@ def evaluate(results_df, trades):
 
 
 def main():
-    results, trades = run_test_strategy()
-
-    print(results.head(5))
-    print(trades['2010-09-28_ETFW20L_long'])
-
-    metrics = evaluate(results, trades)
-    print(metrics)
+    pass
 
 
 

@@ -234,6 +234,7 @@ def test_functional_backtesetr_4_days_trades_TEST_SIGS_1(backtester):
             'sell_ds': pd.Timestamp('2010-09-29'),
             'sell_value_no_fee': 840.0,
             'sell_value_with_fee': 836.0,
+            'profit': 432,
         },
         '2010-09-30_TEST_SIGS_1_short': {
             'buy_ds': pd.Timestamp('2010-09-30'),
@@ -243,6 +244,7 @@ def test_functional_backtesetr_4_days_trades_TEST_SIGS_1(backtester):
             'sell_ds': pd.Timestamp('2010-10-01'),
             'sell_value_no_fee': 800.0,
             'sell_value_with_fee': 804.0,
+            'profit': 92
         }
     }
     assert(expected_trades == trades)
@@ -344,7 +346,8 @@ def test_functional_backtester_4_days_trades_TEST_SIGS_2(backtester):
             'trx_value_with_fee': 198423.12,
             'sell_ds': pd.Timestamp('2010-09-30'),
             'sell_value_no_fee': 203510,
-            'sell_value_with_fee': 204283.34
+            'sell_value_with_fee': 204283.34,
+            'profit': -5860.22
 
         },
         '2010-09-29_TEST_SIGS_2_long': {
@@ -354,7 +357,8 @@ def test_functional_backtester_4_days_trades_TEST_SIGS_2(backtester):
             'trx_value_with_fee': 199274.38,
             'sell_ds': pd.Timestamp('2010-10-01'),
             'sell_value_no_fee': 241060,
-            'sell_value_with_fee': 240143.97
+            'sell_value_with_fee': 240143.97,
+            'profit': 40869.59
         }
     }    
     assert(expected_trades == trades)
@@ -367,7 +371,7 @@ def test_bankruptcy(backtester):
 
 
 @pytest.mark.parametrize('backtester', [(signals_test_sigs_3(), fixed_capital_perc_sizer(0.35), 400000)], indirect=True)
-def test_functional_backtester_1_day_trades_TEST_SIGS_3(backtester):
+def test_functional_backtester_1_day_TEST_SIGS_3(backtester):
     expected_available_money = 260030.13
     expected_account_value = 139440
     expected_nav = 399470.13
@@ -387,7 +391,7 @@ def test_functional_backtester_1_day_trades_TEST_SIGS_3(backtester):
 
 
 @pytest.mark.parametrize('backtester', [(signals_test_sigs_3(), fixed_capital_perc_sizer(0.35), 400000)], indirect=True)
-def test_functional_backtester_2_days_trades_TEST_SIGS_3(backtester):
+def test_functional_backtester_2_days_TEST_SIGS_3(backtester):
     expected_available_money = 259493.44
     expected_account_value = 4015
     expected_nav = 404743.44
@@ -414,7 +418,7 @@ def test_functional_backtester_2_days_trades_TEST_SIGS_3(backtester):
 
 
 @pytest.mark.parametrize('backtester', [(signals_test_sigs_3(), fixed_capital_perc_sizer(0.35), 400000)], indirect=True)
-def test_functional_backtester_3_days_trades_TEST_SIGS_3(backtester):
+def test_functional_backtester_3_days_TEST_SIGS_3(backtester):
     expected_available_money = 7.47
     expected_account_value = 412034
     expected_nav = 412041.47
@@ -442,7 +446,7 @@ def test_functional_backtester_3_days_trades_TEST_SIGS_3(backtester):
 
 
 @pytest.mark.parametrize('backtester', [(signals_test_sigs_3(), fixed_capital_perc_sizer(0.35), 400000)], indirect=True)
-def test_functional_backtester_4_days_trades_TEST_SIGS_3(backtester):
+def test_functional_backtester_4_days_TEST_SIGS_3(backtester):
     expected_available_money = 7.47
     expected_account_value = 423622
     expected_nav = 423629.47
@@ -470,7 +474,7 @@ def test_functional_backtester_4_days_trades_TEST_SIGS_3(backtester):
 
 
 @pytest.mark.parametrize('backtester', [(signals_test_sigs_3(), fixed_capital_perc_sizer(0.35), 400000)], indirect=True)
-def test_functional_backtester_5_days_trades_TEST_SIGS_3(backtester):
+def test_functional_backtester_5_days_TEST_SIGS_3(backtester):
     expected_available_money = 132306.81
     expected_account_value = 312470
     expected_nav = 444776.81
@@ -510,7 +514,8 @@ def test_functional_backtester_5_days_trades_TEST_SIGS_3(backtester):
             'trx_value_with_fee': 140698.31,
             'sell_ds': pd.Timestamp('2019-01-03'),
             'sell_value_no_fee': 138230,
-            'sell_value_with_fee': 138755.27
+            'sell_value_with_fee': 138755.27,
+            'profit': 1943.04,
         },
         '2019-01-03_TEST_SIGS_2_long':{
             'buy_ds': pd.Timestamp('2019-01-03'),
@@ -526,6 +531,7 @@ def test_functional_backtester_5_days_trades_TEST_SIGS_3(backtester):
             'sell_ds': pd.Timestamp('2019-01-05'),
             'sell_value_no_fee': 132804,
             'sell_value_with_fee': 132299.34,
+            'profit': 14860.76,
         },
     }    
     assert(expected_trades['2019-01-03_TEST_SIGS_3_long'] == trades['2019-01-03_TEST_SIGS_3_long'])

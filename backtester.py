@@ -136,22 +136,27 @@ class Backtester():
         self.log.debug('\t\t\tFee: ' + str(fee))
         self.log.debug('\t\t\tTransaction value (no fee): ' + str(trx_value))
         self.log.debug('\t\t\tTransaction value (gross): ' + str(trx_value - fee))
+
+        buy_trx_value_with_fee = self._trades[trx_id]['trx_value_with_fee']
         
         if exit_type == 'long':
-            trx_value_with_fee = trx_value - fee
-            self._available_money += trx_value_with_fee
+            sell_trx_value_with_fee = trx_value - fee
+            profit = sell_trx_value_with_fee - buy_trx_value_with_fee
+            self._available_money += sell_trx_value_with_fee
         elif exit_type == 'short':
-            trx_value_with_fee = trx_value + fee
+            sell_trx_value_with_fee = trx_value + fee
+            profit = buy_trx_value_with_fee - sell_trx_value_with_fee
             self._available_money += self._money_from_short[trx_id]
             self._money_from_short.pop(trx_id)
-            self._available_money -= trx_value_with_fee
+            self._available_money -= sell_trx_value_with_fee
   
         self.log.debug('\t\tAvailable money after selling: ' + str(self._available_money))
         
-        self._trades[self._owned_shares[symbol]['trx_id']].update({
+        self._trades[trx_id].update({
             'sell_ds': ds,
             'sell_value_no_fee': trx_value,
-            'sell_value_with_fee': trx_value_with_fee,
+            'sell_value_with_fee': sell_trx_value_with_fee,
+            'profit': round(profit, 2)
         })
         self._owned_shares.pop(symbol)
 

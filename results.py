@@ -46,6 +46,7 @@ def evaluate(results_df, trades):
         # trade was not closed after backtest
         if ('sell_value_with_fee' not in trade.keys()):
             continue
+        profit = trade['profit']
         if profit > 0:
             profits.append(profit)
         else:

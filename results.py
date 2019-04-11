@@ -1,3 +1,11 @@
+# 3rd party
+from matplotlib.font_manager import FontProperties
+import matplotlib.gridspec as gridspec
+import matplotlib.pyplot as plt
+import pandas as pd
+import scipy.stats as stats
+
+
 def evaluate(results_df, trades):
     """
     Input: results dataframe from backtester run
@@ -64,6 +72,61 @@ def evaluate(results_df, trades):
         'no_trades': no_trades,
         'expectation': expectation,
     }
+
+
+def performance_report(results, trades):
+    fig = plt.figure(figsize=(9,7))
+    gs = gridspec.GridSpec(2, 6)
+    ax1 = plt.subplot(gs[0, :2])
+    ax2 = plt.subplot(gs[0, 2:])
+    ax3 = plt.subplot(gs[1, :3])
+    ax4 = plt.subplot(gs[1, 3:])
+    
+    df = results.copy()
+    metrics = evaluate(results, trades)
+
+    def _msg(arr):
+        return 'Mean: {}\nStd Dev: {}\nExcess kurtosis: {}\nSkewness: {}'.format(
+            round(arr.mean(), 2),
+            round(arr.std(), 2),
+            round(stats.kurtosis(arr), 2),
+            round(stats.skew(arr), 2),
+        ).strip()
+
+    # Draw table with metrics
+    metrics_labels = ('sharpe', 'expectation', 'max_dd', 'max_dd_duration', 'annualized_return', 'max_dd_duration')
+    metrics_tbl = ax1.table(
+        cellText=[[k, round(metrics[k], 2)] for k in metrics_labels],
+        colLabels=['Metric', 'Value'], 
+        colWidths=[0.6, 0.3],
+        loc='center', 
+        cellLoc='center',
+    )
+    for (row, col), cell in metrics_tbl.get_celld().items():
+        if (row == 0) or (col == -1):
+            cell.set_text_props(fontproperties=FontProperties(weight='bold'))
+    ax1.axis("off")
+    metrics_tbl.set_fontsize(12)
+    metrics_tbl.scale(1, 2)
+
+    # Draw rate of returns curve
+    df['rate_of_return'].plot(ax=ax2, title='Rate of returns')
+
+    # Draw distribution of daily returns
+    df.loc[:, 'daily_returns'] = (df['nav']/df['nav'].shift(1)-1)
+    daily_returns = (df[df['daily_returns'] != 0]['daily_returns']).copy()
+    daily_returns.dropna(axis=0, inplace=True)
+    daily_returns.plot(ax=ax3, kind='hist', title='Distribution of daily returns')
+    ax3.text(0.01, -0.4, _msg(daily_returns.values), ha="left", transform=ax3.transAxes)
+
+    # Draw distribution of trades
+    profits = {'profit': [t['profit'] for t in trades.values()]} 
+    profits_df = pd.DataFrame(profits)['profit']
+    profits_df.plot(ax=ax4, kind='hist', title='Distribution of profits from trades')
+    ax4.text(0.01, -0.4, _msg(profits_df.values), ha="left", transform=ax4.transAxes)
+    
+    plt.tight_layout()
+    plt.show()
     
 
 

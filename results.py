@@ -94,7 +94,7 @@ def performance_report(results, trades):
         ).strip()
 
     # Draw table with metrics
-    metrics_labels = ('sharpe', 'expectation', 'max_dd', 'max_dd_duration', 'annualized_return', 'max_dd_duration')
+    metrics_labels = ('sharpe', 'expectation', 'max_dd', 'max_dd_duration', 'annualized_return', 'max_dd_duration', 'no_trades')
     metrics_tbl = ax1.table(
         cellText=[[k, round(metrics[k], 2)] for k in metrics_labels],
         colLabels=['Metric', 'Value'], 

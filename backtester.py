@@ -9,7 +9,7 @@ from commons import (
 
 class Backtester():
     def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False, 
-                 position_sizer=None):
+                 position_sizer=None, stop_loss=False):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
@@ -22,6 +22,7 @@ class Backtester():
         self.position_sizer = position_sizer
         self.price_label = price_label
         self.init_capital = init_capital
+        self.stop_loss = stop_loss
 
     def run(self, test_days=None):
         self._reset_backtest_state()
@@ -59,13 +60,23 @@ class Backtester():
                 # safe check if missing ds for given owned symbol
                 if not symbol in symbols_in_day[ds]:
                     continue
+                current_sym_prices = self.signals[symbol][self.price_label]
                 self.log.debug('\t+ Checking exit signal for: ' + symbol)
+                if self.stop_loss == True:
+                    stop_loss_price = self.signals[symbol]['stop_loss'][ds]
+                    trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type'] 
+                    if (trade_type == 'long') and (current_sym_prices[ds] <= stop_loss_price):
+                        self.log.debug('\t\t LONG STOP LOSS TRIGGERED - EXITING')
+                        self._sell(symbol, current_sym_prices, ds, 'long')
+                    elif (trade_type == 'short') and (current_sym_prices[ds] >= stop_loss_price):
+                        self.log.debug('\t\t SHORT STOP LOSS TRIGGERED - EXITING')
+                        self._sell(symbol, current_sym_prices, ds, 'short')
                 if self.signals[symbol]['exit_long'][ds] == 1:
                     self.log.debug('\t\t EXIT LONG')
-                    self._sell(symbol, self.signals[symbol][self.price_label], ds, 'long')
+                    self._sell(symbol, current_sym_prices, ds, 'long')
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     self.log.debug('\t\t EXIT SHORT')
-                    self._sell(symbol, self.signals[symbol][self.price_label], ds, 'short')
+                    self._sell(symbol, current_sym_prices, ds, 'short')
                 else:
                     self.log.debug('\t+ Not exiting from: ' + symbol)
             
@@ -162,6 +173,14 @@ class Backtester():
 
     def _buy(self, trx, ds):
         """Buying procedure"""
+        if self._owned_shares.get(trx['symbol'], None) == trx['symbol']:
+            raise ValueError(
+                'Trying to buy {} long/short of {}. You currenlty own this symbol.\
+                Buying additional/partial selling is currently not supported'.format(
+                    trx['entry_type'], trx['symbol']
+                )
+            )
+
         trx_id = '_'.join((str(ds)[:10], trx['symbol'], trx['entry_type']))
         self.log.debug('\t\tBuying {} (Transaction id: {})'.format(trx['symbol'], trx_id))
         

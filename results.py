@@ -120,7 +120,7 @@ def performance_report(results, trades):
     ax3.text(0.01, -0.4, _msg(daily_returns.values), ha="left", transform=ax3.transAxes)
 
     # Draw distribution of trades
-    profits = {'profit': [t['profit'] for t in trades.values()]} 
+    profits = {'profit': [t['profit'] for t in trades.values() if t.get('profit', None)]} 
     profits_df = pd.DataFrame(profits)['profit']
     profits_df.plot(ax=ax4, kind='hist', title='Distribution of profits from trades')
     ax4.text(0.01, -0.4, _msg(profits_df.values), ha="left", transform=ax4.transAxes)

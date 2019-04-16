@@ -1,10 +1,13 @@
 import argparse
+import logging
 import logging.config
 import os
 import yaml
 
 
 def setup_logging(path='./logging.yaml', logger=None, debug=False):
+    if isinstance(logger, logging.RootLogger) or isinstance(logger, logging.Logger):
+        return logger
     if not logger:
         if debug == False:
             logger = 'simple_info'

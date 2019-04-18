@@ -62,7 +62,13 @@ class Backtester():
                     continue
                 current_sym_prices = self.signals[symbol][self.price_label]
                 self.log.debug('\t+ Checking exit signal for: ' + symbol)
-                if self.stop_loss == True:
+                if self.signals[symbol]['exit_long'][ds] == 1:
+                    self.log.debug('\t\t EXIT LONG')
+                    self._sell(symbol, current_sym_prices, ds, 'long')
+                elif self.signals[symbol]['exit_short'][ds] == 1:
+                    self.log.debug('\t\t EXIT SHORT')
+                    self._sell(symbol, current_sym_prices, ds, 'short')
+                elif self.stop_loss == True:
                     stop_loss_price = self.signals[symbol]['stop_loss'][ds]
                     trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type'] 
                     if (trade_type == 'long') and (current_sym_prices[ds] <= stop_loss_price):
@@ -71,12 +77,6 @@ class Backtester():
                     elif (trade_type == 'short') and (current_sym_prices[ds] >= stop_loss_price):
                         self.log.debug('\t\t SHORT STOP LOSS TRIGGERED - EXITING')
                         self._sell(symbol, current_sym_prices, ds, 'short')
-                if self.signals[symbol]['exit_long'][ds] == 1:
-                    self.log.debug('\t\t EXIT LONG')
-                    self._sell(symbol, current_sym_prices, ds, 'long')
-                elif self.signals[symbol]['exit_short'][ds] == 1:
-                    self.log.debug('\t\t EXIT SHORT')
-                    self._sell(symbol, current_sym_prices, ds, 'short')
                 else:
                     self.log.debug('\t+ Not exiting from: ' + symbol)
             

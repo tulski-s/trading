@@ -12,10 +12,10 @@ class PositionSize(metaclass=ABCMeta):
     """
     Base class for all position sizers. Implements common method across all of them.
     """
-    def __init__(self, sort_type='alphabetically', logger=None, debug=False):
+    def __init__(self, fee_perc=0.0038, min_fee=4, sort_type='alphabetically', logger=None, debug=False):
         self.log = setup_logging(logger=logger, debug=debug)
-        self.fee_perc = 0.0038  # 0.38%
-        self.min_fee = 4  # 4 PLN
+        self.fee_perc = fee_perc
+        self.min_fee = min_fee
         self.sort_type = sort_type
 
     @abstractmethod

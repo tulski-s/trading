@@ -18,6 +18,7 @@ def evaluate(results_df, trades):
         - Annualized Returns
         - Expectation
         - No. of trades
+        - Win rate
     """
     df = results_df.copy()
 
@@ -54,16 +55,16 @@ def evaluate(results_df, trades):
         # trade was not closed after backtest
         if ('sell_value_with_fee' not in trade.keys()):
             continue
-        profit = trade['profit']
-        if profit > 0:
-            profits.append(profit)
+        if trade['profit'] > 0:
+            profits.append(trade['profit'])
         else:
-            losses.append(profit)
+            losses.append(trade['profit'])
 
     no_trades = len(trades)
     avg_win = sum(profits)/len(profits)
     avg_loss = abs(sum(losses)/len(losses))
     expectation = ((len(profits)/no_trades)*avg_win) - ((len(losses)/no_trades)*avg_loss)
+    win_rate = int((len(profits)/no_trades)*100)
     return {
         'sharpe': annualized_sharpe_ratio,
         'max_dd': maximum_drawdown,
@@ -71,6 +72,7 @@ def evaluate(results_df, trades):
         'annualized_return': annualized_return,
         'no_trades': no_trades,
         'expectation': expectation,
+        'win_rate': win_rate
     }
 
 
@@ -94,7 +96,7 @@ def performance_report(results, trades):
         ).strip()
 
     # Draw table with metrics
-    metrics_labels = ('sharpe', 'expectation', 'max_dd', 'max_dd_duration', 'annualized_return', 'max_dd_duration', 'no_trades')
+    metrics_labels = ('sharpe', 'expectation', 'max_dd', 'max_dd_duration', 'annualized_return', 'max_dd_duration', 'no_trades', 'win_rate')
     metrics_tbl = ax1.table(
         cellText=[[k, round(metrics[k], 2)] for k in metrics_labels],
         colLabels=['Metric', 'Value'], 

@@ -61,8 +61,8 @@ def evaluate(results_df, trades):
             losses.append(trade['profit'])
 
     no_trades = len(trades)
-    avg_win = sum(profits)/len(profits)
-    avg_loss = abs(sum(losses)/len(losses))
+    avg_win = 0 if len(profits) == 0 else sum(profits)/len(profits)
+    avg_loss = 0 if len(losses) == 0 else abs(sum(losses)/len(losses))
     expectation = ((len(profits)/no_trades)*avg_win) - ((len(losses)/no_trades)*avg_loss)
     win_rate = int((len(profits)/no_trades)*100)
     return {

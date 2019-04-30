@@ -151,10 +151,10 @@ def signals_test_stop_loss_1():
 def signals_test_long_short_same():
     dates = ['2019-01-01', '2019-01-02']
     signals_data = {
-        'close': [1, 1],
-        'entry_long': [1, 0],
+        'close': [21, 21],
+        'entry_long': [0, 1],
         'exit_long': [0, 0],
-        'entry_short': [0, 1],
+        'entry_short': [1, 0],
         'exit_short': [0, 0],
     }
     return {'TEST_SHORT_LONG_SAME': pd.DataFrame(signals_data, index=pd.DatetimeIndex(dates))}

@@ -173,9 +173,9 @@ class Backtester():
 
     def _buy(self, trx, ds):
         """Buying procedure"""
-        if self._owned_shares.get(trx['symbol'], None) == trx['symbol']:
+        if self._owned_shares.get(trx['symbol']):
             raise ValueError(
-                'Trying to buy {} long/short of {}. You currenlty own this symbol.\
+                'Trying to buy {} of {}. You currenlty own this symbol.\
                 Buying additional/partial selling is currently not supported'.format(
                     trx['entry_type'], trx['symbol']
                 )

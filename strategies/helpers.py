@@ -41,12 +41,10 @@ def create_bollinger_bands(df_org, price_label='close', ma_type='simple', time_w
     If with_nans is False (default) all rows where there is NaN in Bollinger Bands columns will be dropped.
     """
     df = df_org.copy()
-    # print(df[price_label].rolling(window=time_window).mean().head(10))
     if ma_type == 'simple':
         df.loc[:, 'central_ma'] = df[price_label].rolling(window=time_window).mean()
     elif ma_type == 'exp':
         df.loc[:, 'central_ma'] = df[price_label].ewm(span=time_window, adjust=False).mean()
-    # print('central powinna byc tylko: ', df.head(10))
     df.loc[:, 'ma_std'] = df[price_label].rolling(window=time_window).std()
     df.loc[:, 'lower_ma'] = df['central_ma'] - (no_std*df['ma_std'])
     df.loc[:, 'upper_ma'] = df['central_ma'] + (no_std*df['ma_std'])

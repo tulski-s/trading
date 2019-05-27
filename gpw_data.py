@@ -84,7 +84,7 @@ class GPWData():
     def split_into_subsets(self, pricing_data, ratio, df=True):
         """
         *pricing_data* is dict in the form of:
-        {'symbol_date': output princing data from load method (df or dictionary)}
+            {'symbol_key': output princing data from load method (df or dictionary)}
         *ratio* defines what portion of data will be in first sample
         """
         # find max date for test set. that will be the base for the split.

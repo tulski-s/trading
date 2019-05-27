@@ -17,8 +17,9 @@ def optimize_strategy(
     log = commons.setup_logging(logger=logger, debug=debug)
     options = {}
     # pack args and kwargs together into one dict
-    for idx, arg in enumerate(strategy_args):
-        options['arg{}'.format(idx)] = arg
+    if strategy_args:
+        for idx, arg in enumerate(strategy_args):
+            options['arg{}'.format(idx)] = arg
     options.update(strategy_kwargs)
     # create all combinations of agrs and kwargs
     args_names = ['arg{}'.format(idx) for idx in range(len(strategy_args or []))]
@@ -36,7 +37,10 @@ def optimize_strategy(
         args = [a for a in combination[:len(args_names)]]
         kwargs = dict(zip(kwargs_names, combination[len(args_names):]))
         try:
-            signals = signal_gen_func(data, *args, **kwargs)
+            signals = {
+                symbol_key: signal_gen_func(symbol_data, *args, **kwargs)
+                for symbol_key, symbol_data in data.items()
+            }
             backtest = backtester.Backtester(signals, position_sizer=position_sizer, init_capital=init_capital)
             res, trades = backtest.run()
             metrics = results.evaluate(res, trades)

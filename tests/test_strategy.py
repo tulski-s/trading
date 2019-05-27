@@ -45,13 +45,11 @@ def func_gen_test_signals(df, arg1, arg2=None):
                 'exit_short': [0,0,1,0,0,0,0,1,0,0,0,1,0,0,0],
             }
     price_and_entries.update(entries)
-    return {
-        'TEST_SIGS_1': pd.DataFrame(price_and_entries, index=pd.DatetimeIndex(dates)),
-    }
+    return pd.DataFrame(price_and_entries, index=pd.DatetimeIndex(dates))
 
 
 def test_optimize_strategy_correct_best():
-    data = {'mock_symbol': 'mock_data'}
+    data = {'TEST_SIGS_1': pd.DataFrame({'close':[1,2,3]}, index=pd.DatetimeIndex(['2019-01-01', '2019-01-02', '2019-01-03'])),}
     strategy_args = [['long_only', 'long_and_short']]
     strategy_kwargs = {'arg2': [1, 2]}
     res = strategy.optimize_strategy(

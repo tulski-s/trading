@@ -216,10 +216,15 @@ class Backtester():
 
     def _define_candidate(self, symbol, ds, entry_type):
         """Reutrns dictionary with purchease candidates and necessery keys."""
+        if self.signals[symbol].get('stop_loss', None):
+            stop_loss = self.signals[symbol]['stop_loss'][ds]
+        else:
+            stop_loss = None
         return {
             'symbol': symbol,
             'entry_type': entry_type,
-            'price': self.signals[symbol][self.price_label][ds]
+            'price': self.signals[symbol][self.price_label][ds],
+            'stop_loss': stop_loss
         }
 
     def _calculate_account_value(self, ds):

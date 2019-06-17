@@ -3,7 +3,6 @@ from abc import ABCMeta, abstractmethod
 import random
 
 from commons import (
-    get_parser,
     setup_logging,
 )
 
@@ -91,15 +90,14 @@ class MaxFirstEncountered(PositionSize):
 class FixedCapitalPerc(PositionSize):
     """
     Decides to buy as much different symbols as possible, but for each symbol buys shares for up to `capital_perc` of current 
-    capital. For example, if capital is $1000 and capital_perc is 10%, then it will decide to buy up to 10 symbols and shares 
-    for up $100 for each sumbol.
+    capital. For example, if capital is $1000 and capital_perc is 10%, then it will decide to buy up to 10 symbols and spend up
+    to $100 for each sumbol.
     """
-    def __init__(self, capital=None, capital_perc=None, **kwargs):
+    def __init__(self, capital_perc=None, **kwargs):
         super().__init__(**kwargs)
         self.capital_perc = capital_perc
 
-    def decide_what_to_buy(self, available_money_at_time, candidates, **kwargs):
-        capital = kwargs.get('capital')
+    def decide_what_to_buy(self, available_money_at_time, candidates, capital=None, **kwargs):
         single_buy_limit = round(capital*self.capital_perc, 2)
         self.log.debug('\t+ Based on capital: {} which gives signle transaction valiue limit: {} ({}%)'.format(
             capital, single_buy_limit, self.capital_perc*100
@@ -122,29 +120,47 @@ class FixedCapitalPerc(PositionSize):
             symbols_to_buy.append(self._define_symbol_to_buy(candidate, shares_count, trx_value, expected_fee))
             available_money_at_time -= (trx_value+expected_fee)
         return symbols_to_buy
-            
-
-"""
-TODO(slaw):
-- MODEL 3: THE PERCENT RISK MODEL  -> 156 strona z ksiazki "trade your way...""
-- MODEL 4 (with changes in backtester) -> adjusting size of the positions everyday so that you always has certain amount of money
-           at risk. But that's later. Don't worry about iut now
-"""
 
 
-def main():
-    parser = get_parser()
-    args = parser.parse_args()
-    candidates = [
-        {'symbol': 'a', 'entry_type': 'long', 'price': 123},
-        {'symbol': 'c', 'entry_type': 'long', 'price': 1},
-        {'symbol': 'z', 'entry_type': 'long', 'price': 98},
-        {'symbol': 'd', 'entry_type': 'long', 'price': 100},
-    ]
-    ps = MaxFirstEncountered(debug=args.debug)
-    print(ps.decide_what_to_buy(1000, candidates))
+class PercentageRisk(PositionSize):
+    """
+    *perc_risk* is % of account value one will risk per one position. Model controls size of position as a function of risk. 
+    In general, the bigger stop losses and reward-to-risk ration  in strategy the higher perc_risk can be (but still
+    between 1 and 3%). If stops in strategy are shorter % should be probably smaller than 1. Expectation of the system also 
+    counts - if its fairly large one can probably risk more.
+    """
+    def __init__(self, perc_risk=None, **kwargs):
+        super().__init__(**kwargs)
+        self.perc_risk = perc_risk
 
-
-
-if __name__ == '__main__':
-    main()
+    def decide_what_to_buy(self, available_money_at_time, candidates, capital=None, **kwargs):
+        symbols_to_buy = []
+        for candidate in self.sort(candidates):
+            if not candidate.get('stop_loss', None):
+                raise ValueError(
+                    'Candidate ({}) does not have available stop loss. Cannot use PercentageRisk position sizer!'.format(
+                        candidate['symbol']
+                    )
+                )
+            price = candidate['price']
+            self._money_and_price_msg(available_money_at_time, price)
+            self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
+            # how many shares you can theoretically get
+            value_at_risk_per_share = abs(price - candidate['stop_loss'])
+            risk_per_transaction = round(capital*self.perc_risk, 2)
+            theoretical_shares_count = risk_per_transaction//value_at_risk_per_share
+            theoretical_trx_value = theoretical_shares_count * price
+            # how many shares you can actually get
+            if available_money_at_time < theoretical_trx_value:
+                shares_count = self.get_shares_count(available_money_at_time, price)
+            else:
+                shares_count = self.get_shares_count(theoretical_trx_value, price)
+            if shares_count == 0:
+                self._cannot_afford_msg(candidate['symbol'])
+                continue
+            real_trx_value = shares_count*price
+            expected_fee = self.calculate_fee(real_trx_value)
+            self._buying_decision_msg(shares_count, candidate['symbol'])
+            symbols_to_buy.append(self._define_symbol_to_buy(candidate, shares_count, real_trx_value, expected_fee))
+            available_money_at_time -= (real_trx_value+expected_fee)
+        return symbols_to_buy

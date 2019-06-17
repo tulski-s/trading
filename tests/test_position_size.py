@@ -5,6 +5,7 @@ import pytest
 from position_size import (
     FixedCapitalPerc,
     MaxFirstEncountered,
+    PercentageRisk,
 )
 
 
@@ -45,6 +46,15 @@ def candidates_10():
         {'symbol': 'c8', 'entry_type': 'long', 'price': 101},
         {'symbol': 'c4', 'entry_type': 'short', 'price': 401},   
         {'symbol': 'c5', 'entry_type': 'long', 'price': 501},   
+    ]
+
+
+@pytest.fixture
+def candidates_3_stop_loss():
+    return [
+        {'symbol': 'c1', 'entry_type': 'long', 'price': 111, 'stop_loss':100},
+        {'symbol': 'c2', 'entry_type': 'short', 'price': 103, 'stop_loss':80},
+        {'symbol': 'c3', 'entry_type': 'long', 'price': 194, 'stop_loss':192},
     ]
 
 
@@ -122,3 +132,21 @@ def test_decide_what_to_buy_3_can(candidates_3):
         }
     ]
     assert(symbols_to_buy == expected_symbols_to_buy)
+
+
+def test_decide_what_to_buy_3_cans_with_sl(candidates_3_stop_loss):
+    symbols_to_buy = PercentageRisk(sort_type='expensive', perc_risk=0.5).decide_what_to_buy(30000, candidates_3_stop_loss, capital=300000)
+    expected_symbols_to_buy = [{
+        'symbol': 'c3',
+        'entry_type': 'long',
+        'shares_count': 154,
+        'price': 194,
+        'trx_value': 29876,
+        'fee': 113.53
+    }]
+    assert(symbols_to_buy == expected_symbols_to_buy)
+
+
+def test_decide_what_to_buy_missing_sl_when_its_mandatory(candidates_1):
+    with pytest.raises(ValueError):
+        symbols_to_buy = PercentageRisk().decide_what_to_buy(1, candidates_1, capital=2)

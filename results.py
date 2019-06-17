@@ -1,4 +1,6 @@
 # 3rd party
+import matplotlib
+matplotlib.use('TkAgg') # to avoid "(...) not installed as a framework (...)" error on Mac
 from matplotlib.font_manager import FontProperties
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt

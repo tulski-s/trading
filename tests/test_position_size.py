@@ -1,5 +1,6 @@
 # 3rd party
 import pytest
+import numpy
 
 # custom
 from position_size import (
@@ -13,6 +14,13 @@ from position_size import (
 def candidates_1():
     return [
         {'symbol': 'c1', 'entry_type': 'long', 'price': 123},
+    ]
+
+
+@pytest.fixture
+def candidates_1_nan_sl():
+    return [
+        {'symbol': 'c1', 'entry_type': 'long', 'price': 123, 'stop_loss': numpy.nan},
     ]
 
 
@@ -150,3 +158,8 @@ def test_decide_what_to_buy_3_cans_with_sl(candidates_3_stop_loss):
 def test_decide_what_to_buy_missing_sl_when_its_mandatory(candidates_1):
     with pytest.raises(ValueError):
         symbols_to_buy = PercentageRisk().decide_what_to_buy(1, candidates_1, capital=2)
+
+
+def test_decide_what_to_buy_missing_sl_as_nan(candidates_1_nan_sl):
+    with pytest.raises(ValueError):
+        symbols_to_buy = PercentageRisk().decide_what_to_buy(1, candidates_1_nan_sl, capital=2)

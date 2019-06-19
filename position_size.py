@@ -6,6 +6,9 @@ from commons import (
     setup_logging,
 )
 
+#3rd party
+import numpy
+
 
 class PositionSize(metaclass=ABCMeta):
     """
@@ -139,6 +142,12 @@ class PercentageRisk(PositionSize):
             if not candidate.get('stop_loss', None):
                 raise ValueError(
                     'Candidate ({}) does not have available stop loss. Cannot use PercentageRisk position sizer!'.format(
+                        candidate['symbol']
+                    )
+                )
+            if numpy.isnan(candidate.get('stop_loss')):
+                raise ValueError(
+                    'Candidate ({}) has NaN as stop loss. It sohuld be a number!'.format(
                         candidate['symbol']
                     )
                 )

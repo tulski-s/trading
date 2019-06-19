@@ -83,6 +83,7 @@ class GPWData():
 
     def split_into_subsets(self, pricing_data, ratio, df=True):
         """
+        Returns 2 dictionaries - test and validation. Both are in form of {symbol<string>: data<df|dict>}
         *pricing_data* is dict in the form of:
             {'symbol_key': output princing data from load method (df or dictionary)}
         *ratio* defines what portion of data will be in first sample

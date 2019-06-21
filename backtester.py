@@ -227,19 +227,21 @@ class Backtester():
             'stop_loss': stop_loss
         }
 
-    def _calculate_account_value(self, ds):
+    def _calculate_account_value(self, ds, print_err_msg=True):
         _account_value = 0
         for symbol, vals in self._owned_shares.items():
             try:
                 price = self.signals[symbol][self.price_label][ds]
+                self._backup_close_prices[symbol] = (price, ds)
             except KeyError:
                 # in case of missing ds in symbol take previous price value
                 price, price_ds = self._backup_close_prices[symbol]
-                self.log.warning('\t\t!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
-                    price_ds, symbol, ds
-                ))
+                if print_err_msg == False:
+                    self.log.warning(
+                        '\t\t!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
+                        price_ds, symbol, ds
+                    ))
             _account_value += vals['cnt'] * price
-            self._backup_close_prices[symbol] = (price, ds)
         return _account_value
 
     def _get_money_from_short(self):
@@ -248,7 +250,7 @@ class Backtester():
     def _summarize_day(self, ds):
         """Sets up summaries after finished session day."""
         self.log.debug('[ SUMMARIZE SESSION {} ]'.format(str(ds)[:10]))
-        _account_value = self._calculate_account_value(ds)
+        _account_value = self._calculate_account_value(ds, print_err_msg=False)
         # account value (can be negative) + avaiable money + any borrowed moneny
         nav = _account_value + self._available_money + self._get_money_from_short()
         self._account_value[ds] = _account_value

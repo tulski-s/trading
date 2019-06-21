@@ -39,7 +39,7 @@ def optimize_strategy(
         try:
             signals = {
                 symbol_key: signal_gen_func(symbol_data, *args, **kwargs)
-                for symbol_key, symbol_data in data.items()
+                for symbol_key, symbol_data in data.items() if not symbol_data.empty
             }
             backtest = backtester.Backtester(signals, position_sizer=position_sizer, init_capital=init_capital)
             res, trades = backtest.run()

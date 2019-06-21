@@ -132,9 +132,10 @@ class PercentageRisk(PositionSize):
     between 1 and 3%). If stops in strategy are shorter % should be probably smaller than 1. Expectation of the system also 
     counts - if its fairly large one can probably risk more.
     """
-    def __init__(self, perc_risk=None, **kwargs):
+    def __init__(self, perc_risk=None, fallback_sl=0.1, **kwargs):
         super().__init__(**kwargs)
         self.perc_risk = perc_risk
+        self.fallback_sl = fallback_sl
 
     def decide_what_to_buy(self, available_money_at_time, candidates, capital=None, **kwargs):
         symbols_to_buy = []
@@ -152,10 +153,16 @@ class PercentageRisk(PositionSize):
                     )
                 )
             price = candidate['price']
+            stop_loss = candidate['stop_loss']
             self._money_and_price_msg(available_money_at_time, price)
             self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
             # how many shares you can theoretically get
-            value_at_risk_per_share = abs(price - candidate['stop_loss'])
+            if price == stop_loss:
+                if candidate['entry_type'] == 'short':
+                    stop_loss = price + (price*self.fallback_sl)
+                elif candidate['entry_type'] == 'long':
+                    stop_loss = price - (price*self.fallback_sl)
+            value_at_risk_per_share = abs(price - stop_loss)
             risk_per_transaction = round(capital*self.perc_risk, 2)
             theoretical_shares_count = risk_per_transaction//value_at_risk_per_share
             theoretical_trx_value = theoretical_shares_count * price

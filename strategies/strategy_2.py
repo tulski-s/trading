@@ -7,13 +7,13 @@ sys.path.insert(0, '/Users/slaw/osobiste/trading')
 import numpy as np
 
 # custom
-import gpw_data
-import strategies.helpers
-
-import position_size
 import backtester
-
 import commons
+import gpw_data
+import position_size
+import results
+import strategy
+import strategies.helpers
 
 
 def generate_signals(df, ma_type='simple', time_window=None, no_std=None, min_holding_period=None, perc_to_region=None):
@@ -145,32 +145,76 @@ def run_strategy(days=-1, debug=False):
         symbol: generate_signals(
             df,
             ma_type='exp',
-            time_window=28,
-            no_std=2,
+            time_window=25,
+            no_std=3,
             min_holding_period=5,
             perc_to_region=0.2,
         )
-        for symbol, df in data_validation.items()
+        for symbol, df in data_validation.items() if not df.empty
     }
     print('... Done! [OK]')
 
     print('Running backtest...', end='', flush=True)
     tester = backtester.Backtester(
         signals,
-        position_sizer=position_size.PercentageRisk(perc_risk=0.01, debug=debug, sort_type='cheapest'),
+        position_sizer=position_size.PercentageRisk(perc_risk=0.005, debug=debug, sort_type='cheapest'), # 0.5% risk
         debug=debug,
     )
     if days == -1:
         tester_results, tester_trades = tester.run()
     else:
         tester_results, tester_trades = tester.run(test_days=days)
-    print('... Done! [OK]')
     
-    # return tester_results, tester_trades
+    results.performance_report(tester_results, tester_trades)
+    print('... Done! [OK]')
 
+
+def optimize():
+    strategy_kwargs = {
+        'ma_type': ['simple', 'exp'],
+        'time_window':[5, 7, 10, 14, 21, 25, 28],
+        'no_std': [1,2,3],
+        'min_holding_period': [1, 5, 10, 15],
+        'perc_to_region': [0.2, 0.4, 0.6, 0.8]
+    }
+
+    gpwdata = gpw_data.GPWData(pricing_data_path='./pricing_data')
+    index = 'WIG20'
+    wig_20_stocks = gpwdata.load(index=index)
+    data_test, data_validation = gpwdata.split_into_subsets(wig_20_stocks, 0.5)
+    position_sizers = {
+        '1': position_size.PercentageRisk(perc_risk=0.005, sort_type='cheapest'),
+        '2': position_size.PercentageRisk(perc_risk=0.01, sort_type='cheapest'),
+        '3': position_size.PercentageRisk(perc_risk=0.015, sort_type='cheapest'),
+        '4': position_size.PercentageRisk(perc_risk=0.005),
+        '5': position_size.PercentageRisk(perc_risk=0.01),
+        '6': position_size.PercentageRisk(perc_risk=0.015),
+        '7': position_size.FixedCapitalPerc(capital_perc=0.1, sort_type='cheapest'),
+        '8': position_size.FixedCapitalPerc(capital_perc=0.2, sort_type='cheapest'),
+        '9': position_size.FixedCapitalPerc(capital_perc=0.3, sort_type='cheapest'),
+        '10': position_size.FixedCapitalPerc(capital_perc=0.1),
+        '11': position_size.FixedCapitalPerc(capital_perc=0.2),
+        '12': position_size.FixedCapitalPerc(capital_perc=0.3),
+    }
+    for idx, sizer in position_sizers.items():
+        print('Optimizing siezer: ', idx)
+        res = strategy.optimize_strategy(
+            data=data_test,
+            signal_gen_func=generate_signals,
+            strategy_kwargs=strategy_kwargs,
+            position_sizer=sizer,
+            init_capital=10000,
+            results_path='/Users/slaw/osobiste/trading/{}_optimization_results_all.csv'.format(idx),
+        )
 
 if __name__ == '__main__':
     parser = commons.get_parser()
     parser.add_argument('--days', '-d', type=int, default=-1, help='number of days to run backtester for')
+    parser.add_argument('--optimize', '-o', action='store_true', help='run optimization')
     args = parser.parse_args()
-    run_strategy(args.days, args.debug)
+    if args.optimize:
+        optimize()
+    else:
+        run_strategy(args.days, args.debug)
+    
+

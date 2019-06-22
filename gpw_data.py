@@ -17,9 +17,17 @@ class GPWData():
         self.collector = PriceCollector()
         self.column_names = ['date', 'open', 'high', 'low', 'close', 'volume']
         self.indicies_stocks = {
-            'WIG20': ['ALIOR', 'ASSECOPOL', 'SANPL', 'CCC', 'CYFRPLSAT', 'ENEA', 'ENERGA',
-                      'EUROCASH', 'KGHM', 'LOTOS', 'LPP', 'MBANK', 'ORANGEPL', 'PEKAO',
-                      'PGE', 'PGNIG', 'PKNORLEN', 'PKOBP', 'PZU', 'TAURONPE']
+            'WIG20': ['ALIOR', 'ASSECOPOL', 'SANPL', 'CCC', 'CYFRPLSAT', 'CDPROJEKT', 'ENERGA',
+                      'PLAY', 'KGHM', 'LOTOS', 'LPP', 'MBANK', 'ORANGEPL', 'PEKAO',
+                      'PGE', 'PGNIG', 'PKNORLEN', 'PKOBP', 'PZU', 'TAURONPE'],
+            'mWIG40': ['11BIT', 'AMICA', 'AMREST', 'JSW', 'BENEFIT', 'BOGDANKA',
+                       'BORYSZEW', 'BUDIMEX', 'CIECH', 'CIGAMES', 'COMARCH', 'ECHO',
+                       'ENEA', 'DINOPL', 'FAMUR', 'FORTE', 'GETIN', 'GPW', 'GRUPAAZOTY',
+                       'GTC', 'HANDLOWY', 'INGBSK', 'INTERCARS', 'KERNEL', 'KETY', 
+                       'KRUK', 'LCCORP', 'LIVECHAT', 'MABION', 'MILLENNIUM', 'ORBIS', 
+                       'PKPCARGO', 'PLAYWAY', 'POLIMEXMS', 'STALPROD', 'TRAKCJA', 
+                       'VISTULA', 'WAWEL', 'WIRTUALNA'
+            ]
         }
 
     def download_data_to_csv(self, symbols=None):
@@ -143,12 +151,12 @@ class GPWData():
 def main():
     gpw_data = GPWData()
     # gpw_data.download_data_to_csv(symbols=wig20_symbols)
-    data = gpw_data.load(index='WIG20')
+    # data = gpw_data.load(index='WIG20')
     # data = gpw_data.load(symbols=['SANPL', 'ALIOR'])
-    print(data)
+    #print(data)
 
-    etfs_symbols = list(PriceCollector().get_etfs_symbols().keys())
-    gpw_data.download_data_to_csv(symbols=etfs_symbols)
+    # etfs_symbols = list(PriceCollector().get_etfs_symbols().keys())
+    gpw_data.download_data_to_csv(symbols=gpw_data.indicies_stocks['mWIG40'])
 
 
 

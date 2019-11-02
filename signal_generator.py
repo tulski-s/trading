@@ -7,9 +7,8 @@ from commons import (
     setup_logging,
 )
 
-from rules import (
-    trend
-)
+import rules
+
 
 class SignalGenerator():
     def __init__(self, df=None, config=None, logger=None, debug=False):
@@ -20,31 +19,31 @@ class SignalGenerator():
         self.simple_rules = []
         self.convoluted_rules = []
         self.rules_results = {}
+
+        # TODO(slaw) - would be good to have validation of config file here
+
         # self.signal = {} somewhere final signal has to be stored. with at least date and 4 columns
         self.max_lookback = 0
         for rule in config['rules']:
             # initiate empty list for rules outputs
             self.rules_results[rule['id']] = []
-            # store every rule timeseries as array and make sure all number of rows is equal
-            self.data[rule['ts']] = df[rule['ts']].to_numpy()
-            assert(self.data[rule['ts']].shape[0] == self.index)
             # segregate simple and convoluted rules
             if rule['type'] == 'simple':
                 self.simple_rules.append(rule)
+                # store every rule timeseries as array and make sure all number of rows is equal
+                self.data[rule['ts']] = df[rule['ts']].to_numpy()
+                assert(self.data[rule['ts']].shape[0] == self.index)
+                # check max lookback. in 'generate' it will be starting point so all data is present
+                if self.max_lookback < rule['lookback']:
+                    self.max_lookback = rule['lookback']
             elif rule['type'] == 'convoluted':
                 self.convoluted_rules.append(rule)
-            # check max lookback. in 'generate' it will be starting point so all data is present
-            if self.max_lookback < rule['lookback']:
-                self.max_lookback = rule['lookback']
-
 
     def generate(self):
         """
         pseudocode
 
-        1) parse config, so that:
-            - it is known which functions and parameters will be used to generate signals 
-            - it is known which mode (strategy) to exectue
+        1) parse and config
         2) get and prepare data
             - if multiple timeseries is used they will have to be synched.
         3) itereate over every day, each time:
@@ -64,22 +63,74 @@ class SignalGenerator():
             if fixed_type:
                 for rule in strategy_rules:
                     # check if rule gives signal. return first encountered
+                    # check constraints (e.g. hold X days)
         """
         idx = self.max_lookback
         while idx < self.index:
             for simple_rule in self.simple_rules:
-                self.log.debug('cheking rule: {r} for idx: {i}'.format(r=simple_rule['id'], i=idx))
+                # self.log.debug('cheking simple rule: {r} for idx: {i}'.format(r=simple_rule['id'], i=idx))
                 self.rules_results[simple_rule['id']].append(
                     simple_rule['func'](
                         self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
                         **simple_rule['params']
                     )
                 )
-            for conv_rule in convoluted_rules:
-                # TODO(slaw) - implement
-                pass
+            for conv_rule in self.convoluted_rules:
+                self.log.debug('cheking convoluted rule: {r} for idx: {i}'.format(r=conv_rule['id'], i=idx))
+                simple_rules_results = self._get_simple_rules_results(conv_rule['simple_rules'], idx-self.max_lookback)
+                self.rules_results[conv_rule['id']].append(
+                    self.combine_simple_results(
+                        rules_results=simple_rules_results,
+                        aggregation_type=conv_rule['aggregation_type'], 
+                        aggregation_params=conv_rule['aggregation_params'],
+                    )
+                )
+            # TODO: implement fixed_type execution
+
             idx += 1
 
+    def combine_simple_results(self, rules_results=None, aggregation_type=None, aggregation_params=None):
+        """
+        Resolves set of simple rules results into single outcome. It can be done based on `aggregation_type`.
+        That is 'combine' (different votings and aggregation) or 'state-based'.
+        """
+        if aggregation_type == 'combine':
+            mode = aggregation_params['mode']
+            if mode == 'strong':
+                # for signal to be 1 or -1, all simple rules results has to be 1 or -1. else 0
+                results_sum = sum(rules_results)
+                len_resutls = len(rules_results)
+                if results_sum == len_resutls:
+                    return 1
+                elif results_sum == -1*len_resutls:
+                    return -1
+                return 0
+            elif mode == 'majority_voting':
+                # signal will be same as most frequent result. 0 in case of tie
+                sum_zero, sum_plus, sum_minus = 0, 0, 0
+                for result in rules_results:
+                    if result == 0:
+                        sum_zero += 1
+                    elif result == 1:
+                        sum_plus += 1
+                    else:
+                        sum_minus += 1    
+                if (sum_plus > sum_zero) and (sum_plus > sum_minus):
+                    return 1
+                elif (sum_minus > sum_zero) and (sum_minus > sum_plus):
+                    return -1
+                else:
+                    return 0
+            else:
+                raise NotImplementedError('mode "{}" for "combine" aggregation is not supported'.format(mode))
+        elif aggregation_type == 'fixed':
+            # it will be based on dict with fixed rules. eg. trend must be 1 and sth else 0, then sth.
+            pass
+        elif aggregation_type == 'state-based':
+            # Implement it later when doint event-based strategies
+            pass
+        else:
+            raise NotImplementedError('aggregation_type "{}" is not supported'.format(aggregation_type))
 
     def _get_ts(self, ts_name, idx, lookback):
         """
@@ -87,6 +138,15 @@ class SignalGenerator():
         That is: "current" element (idx+1) and 6 days of loockback period. 
         """
         return self.data[ts_name][idx-lookback:idx+1]
+
+    def _get_simple_rules_results(self, rules_ids, result_idx):
+        """
+        `rules_ids` is iterable witch ids of simple rules. `result_idx` should be index of results
+        base on which to output combined result.
+        """
+        rules_results = [self.rules_results[rid][result_idx] for rid in rules_ids]
+        # for the future map based convoluted rules it will result either list or dict
+        return rules_results
         
 
 def main():
@@ -100,8 +160,23 @@ def main():
                 'ts': 'close',
                 'lookback': 20,
                 'params': {},
-                'func': trend,
-            }
+                'func': rules.trend,
+            },
+            {
+                'id': 'supprot/resistance',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 30,
+                'params': {},
+                'func': rules.support_resistance,
+            },
+            {
+                'id': 'trend+supprot/resistance',
+                'type': 'convoluted',
+                'simple_rules': ['trend', 'supprot/resistance'],
+                'aggregation_type': 'combine',
+                'aggregation_params':{'mode':'strong'}
+            },
         ],
         'strategy': {
             'type': 'fixed',

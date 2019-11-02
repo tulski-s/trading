@@ -63,6 +63,41 @@ def config_2():
 
 
 @pytest.fixture()
+def config_3():
+    return {
+        'rules': [
+            {
+                'id': 'trend',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 3,
+                'params': {},
+                'func': rules.trend,
+            },
+            {
+                'id': 'supprot/resistance',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 6,
+                'params': {},
+                'func': rules.support_resistance,
+            },
+            {
+                'id': 'trend+supprot/resistance',
+                'type': 'convoluted',
+                'simple_rules': ['trend', 'supprot/resistance'],
+                'aggregation_type': 'combine',
+                'aggregation_params':{'mode':'strong'}
+            },
+        ],
+        'strategy': {
+            'type': 'fixed',
+            'rules': ['trend']
+        }
+    }
+
+
+@pytest.fixture()
 def pricing_df1():
     return pd.DataFrame({
         'close': [20,21,45,32,15,45,23,21,21,12,14,48,15],
@@ -78,29 +113,82 @@ def pricing_df2():
 
 def test_proper_index_access(config_1, pricing_df1):
     signal_generator = SignalGenerator(
-        df = pricing_df1,
-        config = config_1,
+        df=pricing_df1,
+        config=config_1,
     )
     arr = signal_generator._get_ts('close', 8, 5)
     expected_arr = np.array([32,15,45,23,21,21])
     assert_array_equal(arr, expected_arr)
 
 
-def test_rule_results_appending(config_2, pricing_df2):
+def test_simpl_rule_results_appending(config_2, pricing_df2):
     signal_generator = SignalGenerator(
-        df = pricing_df2,
-        config = config_2,
+        df=pricing_df2,
+        config=config_2,
     )
     expected_simple_rule_output = [
         1, 1, 1, 0, 0, -1, -1, -1, -1, 1
     ]
     signal_generator.generate()
     simple_rule_output = signal_generator.rules_results['mock_rule']
-    print('simple_rule_output is: ', simple_rule_output)
     assert(simple_rule_output == expected_simple_rule_output)
 
 
-"""
-TODO(slaw) - add more tests which could be useful
-+ explicit test for results lengths 
-""" 
+def test_accessing_index_for_convoluted_rule(config_3, pricing_df1):
+    """
+    [1, -1, -1, -1, -1, 1, 1]   'trend'
+    [0,  0,  0, -1,  0, 1, 0]   'supprot/resistance'
+    """
+    sg = SignalGenerator(df=pricing_df1, config=config_3)
+    sg.generate()
+    rules_ids = config_3['rules'][2]['simple_rules']
+    idxs = [0,2,3,5]
+    test_results = []
+    for idx in idxs:
+        test_results.append(sg._get_simple_rules_results(rules_ids, idx))
+    expexted_results = [[1,0], [-1,0], [-1,-1], [1,1]]
+    assert(test_results == expexted_results)
+
+
+def test_combine_strong(config_3, pricing_df1):
+    sg = SignalGenerator(df=pricing_df1, config=config_3)
+    rules_results = [[-1,-1,-1], [-1,-1, 0], [1,1,1], [0,1,-1]]
+    test_output = []
+    for results in rules_results:
+        test_output.append(sg.combine_simple_results(
+            rules_results=results,
+            aggregation_type='combine',
+            aggregation_params={'mode':'strong'}
+        ))
+    expected_output = [-1,0,1,0]
+    assert(test_output == expected_output)
+
+
+def test_combine_majority_voting(config_3, pricing_df1):
+    sg = SignalGenerator(df=pricing_df1, config=config_3)
+    rules_results = [
+        [-1,-1,-1, 0, 1], [-1, 1, 0], [1,1,1,-1,0], [0,0,1,1,-1]
+    ]
+    test_output = []
+    for results in rules_results:
+        test_output.append(sg.combine_simple_results(
+            rules_results=results,
+            aggregation_type='combine',
+            aggregation_params={'mode':'majority_voting'}
+        ))
+    expected_output = [-1,0,1,0]
+    assert(test_output == expected_output)
+
+
+def test_convoluted_rule_results_appending(config_3, pricing_df1):
+    sg = SignalGenerator(
+        df=pricing_df1,
+        config=config_3,
+    )
+    expected_convoluted_rule_output = [
+        0, 0, 0, -1, 0, 1, 0
+    ]
+    sg.generate()
+    convoluted_rule_output = sg.rules_results['trend+supprot/resistance']
+    assert(convoluted_rule_output == expected_convoluted_rule_output)
+

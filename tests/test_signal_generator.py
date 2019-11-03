@@ -37,7 +37,7 @@ def config_1():
         ],
         'strategy': {
             'type': 'fixed',
-            'rules': ['trend']
+            'strategy_rules': ['trend']
         }
     }
 
@@ -57,7 +57,7 @@ def config_2():
         ],
         'strategy': {
             'type': 'fixed',
-            'rules': ['trend']
+            'strategy_rules': ['mock_rule']
         }
     }
 
@@ -92,7 +92,7 @@ def config_3():
         ],
         'strategy': {
             'type': 'fixed',
-            'rules': ['trend']
+            'strategy_rules': ['trend']
         }
     }
 
@@ -129,7 +129,7 @@ def test_simpl_rule_results_appending(config_2, pricing_df2):
     expected_simple_rule_output = [
         1, 1, 1, 0, 0, -1, -1, -1, -1, 1
     ]
-    signal_generator.generate()
+    signal_generator._generate_initial_signal()
     simple_rule_output = signal_generator.rules_results['mock_rule']
     assert(simple_rule_output == expected_simple_rule_output)
 
@@ -140,7 +140,7 @@ def test_accessing_index_for_convoluted_rule(config_3, pricing_df1):
     [0,  0,  0, -1,  0, 1, 0]   'supprot/resistance'
     """
     sg = SignalGenerator(df=pricing_df1, config=config_3)
-    sg.generate()
+    sg._generate_initial_signal()
     rules_ids = config_3['rules'][2]['simple_rules']
     idxs = [0,2,3,5]
     test_results = []
@@ -188,7 +188,7 @@ def test_convoluted_rule_results_appending(config_3, pricing_df1):
     expected_convoluted_rule_output = [
         0, 0, 0, -1, 0, 1, 0
     ]
-    sg.generate()
+    sg._generate_initial_signal()
     convoluted_rule_output = sg.rules_results['trend+supprot/resistance']
     assert(convoluted_rule_output == expected_convoluted_rule_output)
 

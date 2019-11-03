@@ -19,10 +19,12 @@ class SignalGenerator():
         self.simple_rules = []
         self.convoluted_rules = []
         self.rules_results = {}
-
         # TODO(slaw) - would be good to have validation of config file here
-
-        # self.signal = {} somewhere final signal has to be stored. with at least date and 4 columns
+        self.strategy_type = config['strategy']['type']
+        self.strategy_rules = config['strategy']['strategy_rules']
+        if config['strategy'].get('constraints', None):
+            self.wait_entry_confirmation = config['strategy']['constraints'].get('wait_entry_confirmation', None)
+            self.hold_x_days = config['strategy']['constraints'].get('hold_x_days', None)
         self.max_lookback = 0
         for rule in config['rules']:
             # initiate empty list for rules outputs
@@ -38,57 +40,25 @@ class SignalGenerator():
                     self.max_lookback = rule['lookback']
             elif rule['type'] == 'convoluted':
                 self.convoluted_rules.append(rule)
+        # (TODO: are those still needed?) helper variables to correctly track final signal assignment 
+        self._signal = 0
+        self._previous_signal = 0
+        self._holding_period = 0
+        self._wait_entry_confirmation_tracker = -1
 
     def generate(self):
-        """
-        pseudocode
+        initial_signal = self._generate_initial_signal()
+        if any([self.wait_entry_confirmation, self.hold_x_days]):
+            self._generate_final_signal_with_constraints(initial_signal)
+        else:
+            self._generate_final_signal(initial_signal)
 
-        1) parse and config
-        2) get and prepare data
-            - if multiple timeseries is used they will have to be synched.
-        3) itereate over every day, each time:
-            (for fixed)
-            - execute appropriate functions
-            - gather results
-            - reduce complex signals etc
-            - decide on the flag of given day
+    def _generate_final_signal(self, initial_signal):
+        pass
 
-        for day in days
-            for simple_rule in simple_rules:
-                # execute each (func, params) over given ts (timeseries) and store results
-            for conv_rule in convoluted_rules:
-                # execute each (func, params) given results from simple rules
-                # aggregate
-                # get results, store it
-            if fixed_type:
-                for rule in strategy_rules:
-                    # check if rule gives signal. return first encountered
-                    # check constraints (e.g. hold X days)
-        """
-        idx = self.max_lookback
-        while idx < self.index:
-            for simple_rule in self.simple_rules:
-                # self.log.debug('cheking simple rule: {r} for idx: {i}'.format(r=simple_rule['id'], i=idx))
-                self.rules_results[simple_rule['id']].append(
-                    simple_rule['func'](
-                        self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
-                        **simple_rule['params']
-                    )
-                )
-            for conv_rule in self.convoluted_rules:
-                self.log.debug('cheking convoluted rule: {r} for idx: {i}'.format(r=conv_rule['id'], i=idx))
-                simple_rules_results = self._get_simple_rules_results(conv_rule['simple_rules'], idx-self.max_lookback)
-                self.rules_results[conv_rule['id']].append(
-                    self.combine_simple_results(
-                        rules_results=simple_rules_results,
-                        aggregation_type=conv_rule['aggregation_type'], 
-                        aggregation_params=conv_rule['aggregation_params'],
-                    )
-                )
-            # TODO: implement fixed_type execution
-
-            idx += 1
-
+    def _generate_final_signal_with_constraints(self, initial_signal):
+        pass
+    
     def combine_simple_results(self, rules_results=None, aggregation_type=None, aggregation_params=None):
         """
         Resolves set of simple rules results into single outcome. It can be done based on `aggregation_type`.
@@ -123,14 +93,14 @@ class SignalGenerator():
                     return 0
             else:
                 raise NotImplementedError('mode "{}" for "combine" aggregation is not supported'.format(mode))
-        elif aggregation_type == 'fixed':
-            # it will be based on dict with fixed rules. eg. trend must be 1 and sth else 0, then sth.
-            pass
         elif aggregation_type == 'state-based':
-            # Implement it later when doint event-based strategies
+            # Implement it later when doint event-based strategies. based on dict. same as fixed?
+            # It should return the same sequential output (eg. 11110000111-1-1-1-1000) showing position
+            # at each day. Same as "combine" with all the votings
             pass
         else:
             raise NotImplementedError('aggregation_type "{}" is not supported'.format(aggregation_type))
+
 
     def _get_ts(self, ts_name, idx, lookback):
         """
@@ -147,6 +117,117 @@ class SignalGenerator():
         rules_results = [self.rules_results[rid][result_idx] for rid in rules_ids]
         # for the future map based convoluted rules it will result either list or dict
         return rules_results
+
+    def _generate_initial_signal(self):
+        initial_signal = []
+        idx = self.max_lookback
+        while idx < self.index:
+            result_idx = idx-self.max_lookback
+            # get results from simple rules
+            for simple_rule in self.simple_rules:
+                # self.log.debug('cheking simple rule: {r} for idx: {i}'.format(r=simple_rule['id'], i=idx))
+                self.rules_results[simple_rule['id']].append(
+                    simple_rule['func'](
+                        self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
+                        **simple_rule['params']
+                    )
+                )
+            # get results from convoluted rules
+            for conv_rule in self.convoluted_rules:
+                # self.log.debug('cheking convoluted rule: {r} for idx: {i}'.format(r=conv_rule['id'], i=idx))
+                simple_rules_results = self._get_simple_rules_results(conv_rule['simple_rules'], result_idx)
+                self.rules_results[conv_rule['id']].append(
+                    self.combine_simple_results(
+                        rules_results=simple_rules_results,
+                        aggregation_type=conv_rule['aggregation_type'], 
+                        aggregation_params=conv_rule['aggregation_params'],
+                    )
+                )
+            # create initial signal
+            if self.strategy_type == 'fixed':
+                for rule in self.strategy_rules:
+                    signal = self.rules_results[rule][result_idx]
+                    # use signal from first encountered rule with -1 or 1. or leave 0
+                    if signal in (-1, 1):
+                        break
+            elif self.strategy_type == 'learning':
+                # not implemented
+                pass
+            initial_signal.append(signal)
+            idx += 1
+
+    def deprecated_generate(self):
+        idx = self.max_lookback
+        while idx < self.index:
+            result_idx = idx-self.max_lookback
+            # get results from simple rules
+            for simple_rule in self.simple_rules:
+                # self.log.debug('cheking simple rule: {r} for idx: {i}'.format(r=simple_rule['id'], i=idx))
+                self.rules_results[simple_rule['id']].append(
+                    simple_rule['func'](
+                        self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
+                        **simple_rule['params']
+                    )
+                )
+            # get results from convoluted rules
+            for conv_rule in self.convoluted_rules:
+                # self.log.debug('cheking convoluted rule: {r} for idx: {i}'.format(r=conv_rule['id'], i=idx))
+                simple_rules_results = self._get_simple_rules_results(conv_rule['simple_rules'], result_idx)
+                self.rules_results[conv_rule['id']].append(
+                    self.combine_simple_results(
+                        rules_results=simple_rules_results,
+                        aggregation_type=conv_rule['aggregation_type'], 
+                        aggregation_params=conv_rule['aggregation_params'],
+                    )
+                )
+
+            # create initial signal
+            if self.strategy_type == 'fixed':
+                for rule in self.strategy_rules:
+                    self._signal = self.rules_results[rule][result_idx]
+                    # use signal from first encountered rule with -1 or 1. or leave 0
+                    if self._signal in (-1, 1):
+                        break
+            elif self.strategy_type == 'learning':
+                # not implemented
+                pass
+
+            # if wait for entry confirmation constrain is on
+            if self.wait_entry_confirmation:
+                # 0-> 1, 0-> -1, 1-> -1, -1 -> 1   te chce
+                # a co z: -1 -> 0   oraz 1 -> 0
+                # tracker is not yet active. set up expected signal and activate tracker
+                if self._wait_entry_confirmation_tracker == -1 and self._signal in (-1, 1):
+                    _expected_signal == self._signal
+                    self._wait_entry_confirmation_tracker = 1
+                    final_signal = self._previous_signal
+                # tracker not active but neutral signal
+                elif self._wait_entry_confirmation_tracker == -1 and self._signal == 0:
+                    final_signal = self._signal
+                # trancker active. still have to wait
+                elif self._wait_entry_confirmation_tracker < self.wait_entry_confirmation:
+                    self._wait_entry_confirmation_tracker += 1
+                    final_signal = self._previous_signal
+                # already waited enough days. check if signal is what it is expectd
+                elif self._wait_entry_confirmation_tracker == self.wait_entry_confirmation:
+                    # signal as expected or neutral
+                    if self._signal == _expected_signal or self._signal == 0:
+                        final_signal = self._signal
+                        self._wait_entry_confirmation_tracker = -1
+                    # signal is opposite to what was expected, go to neutral position
+                    elif self._signal == _expected_signal * -1:
+                        self._wait_entry_confirmation_tracker = -1
+                        final_signal = 0
+
+            
+            # if hold X days constrain is on
+            # if (
+            #     self.hold_x_days and 
+            #     self._signal in (-1, 1) and 
+            # ):
+
+            idx += 1
+
         
 
 def main():
@@ -180,7 +261,11 @@ def main():
         ],
         'strategy': {
             'type': 'fixed',
-            'rules': ['trend']
+            'strategy_rules': ['trend+supprot/resistance'],
+            'constraints': {
+                'hold_x_days': 5,
+                'wait_entry_confirmation': 3
+            }
         }
     }
 

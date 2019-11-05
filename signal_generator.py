@@ -9,11 +9,14 @@ from commons import (
 
 import rules
 
+import gpw_data
+
 
 class SignalGenerator():
     def __init__(self, df=None, config=None, logger=None, debug=False):
         self.log = setup_logging(logger=logger, debug=debug)
         self.config = config
+        self.df = df
         self.index = len(df.index)
         self.data = {}
         self.simple_rules = []
@@ -40,6 +43,7 @@ class SignalGenerator():
                     self.max_lookback = rule['lookback']
             elif rule['type'] == 'convoluted':
                 self.convoluted_rules.append(rule)
+        self._triggers = ('entry_long', 'exit_long', 'entry_short', 'exit_short')
         # (TODO: are those still needed?) helper variables to correctly track final signal assignment 
         self._signal = 0
         self._previous_signal = 0
@@ -49,15 +53,54 @@ class SignalGenerator():
     def generate(self):
         initial_signal = self._generate_initial_signal()
         if any([self.wait_entry_confirmation, self.hold_x_days]):
-            self._generate_final_signal_with_constraints(initial_signal)
-        else:
-            self._generate_final_signal(initial_signal)
+            return self._generate_final_signal_with_constraints(initial_signal)
+        # TODO(slaw) -> tests for _generate_final_signal
+        return self._generate_final_signal(initial_signal)
 
     def _generate_final_signal(self, initial_signal):
-        pass
+        dates = self.df.index.tolist()
+        triggers_dates = dates[self.index:]
+        current = 0
+        previous = 0
+        signal_triggers = {k: [] for k in self._triggers}
+        for idx in range(len(triggers_dates)):
+            current = initial_signal[idx]
+            if current == previous:
+                self._remain_position(signal_triggers)
+            else:
+                self._change_position(previous, current, signal_triggers)
+            previous = current
+        signal_triggers_df = pd.DataFrame(signal_triggers, index=pd.DatetimeIndex(triggers_dates))
+        final_signal = pd.merge(
+            left=self.df,
+            right=signal_triggers_df,
+            how='left',
+            left_index=True,
+            right_index=True
+        )
+        final_signal.fillna(0, inplace=True)
+        return final_signal
 
     def _generate_final_signal_with_constraints(self, initial_signal):
         pass
+
+    def _remain_position(self, signal_triggers):
+        for trigger in self._triggers:
+            last_trigger = signal_triggers[trigger][-1]
+            signal_triggers[trigger].append(last_trigger)
+
+    def _change_position(self, previous, current, signal_triggers):
+        new_triggers ={k: 0 for k in self._triggers}
+        if previous == 1:
+            new_triggers['exit_long'] = 1
+        elif previous == -1:
+            new_triggers['exit_short'] = 1
+        if current == 1:
+            new_triggers['entry_long'] = 1
+        elif current == -1:
+            new_triggers['entry_short'] = 1
+        for k in self._triggers:
+            signal_triggers[k].append(new_triggers[k])
     
     def combine_simple_results(self, rules_results=None, aggregation_type=None, aggregation_params=None):
         """
@@ -231,7 +274,7 @@ class SignalGenerator():
         
 
 def main():
-    pricing_df = pd.read_csv('/Users/slaw/osobiste/gielda/CCC_pricing.csv')
+    pricing_df = gpw_data.GPWData().load(symbols='CCC', from_csv=True)
 
     test_config = {
         'rules': [
@@ -275,7 +318,8 @@ def main():
         debug=True
     )
 
-    signal_generator.generate()
+    # signal_generator.generate()
+    signal_generator._generate_final_signal([1,1,1,1,0,0,0,-1,-1,-1])
 
 if __name__ == '__main__':
     main()

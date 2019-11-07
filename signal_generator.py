@@ -44,22 +44,17 @@ class SignalGenerator():
             elif rule['type'] == 'convoluted':
                 self.convoluted_rules.append(rule)
         self._triggers = ('entry_long', 'exit_long', 'entry_short', 'exit_short')
-        # (TODO: are those still needed?) helper variables to correctly track final signal assignment 
-        self._signal = 0
-        self._previous_signal = 0
-        self._holding_period = 0
-        self._wait_entry_confirmation_tracker = -1
 
     def generate(self):
         initial_signal = self._generate_initial_signal()
         if any([self.wait_entry_confirmation, self.hold_x_days]):
+            # TODO(slaw) -> implement _generate_final_signal_with_constraints
             return self._generate_final_signal_with_constraints(initial_signal)
-        # TODO(slaw) -> tests for _generate_final_signal
         return self._generate_final_signal(initial_signal)
 
     def _generate_final_signal(self, initial_signal):
         dates = self.df.index.tolist()
-        triggers_dates = dates[self.index:]
+        triggers_dates = dates[self.max_lookback:]
         current = 0
         previous = 0
         signal_triggers = {k: [] for k in self._triggers}
@@ -70,7 +65,7 @@ class SignalGenerator():
             else:
                 self._change_position(previous, current, signal_triggers)
             previous = current
-        signal_triggers_df = pd.DataFrame(signal_triggers, index=pd.DatetimeIndex(triggers_dates))
+        signal_triggers_df = pd.DataFrame(signal_triggers, index=self.df.index[self.max_lookback:])
         final_signal = pd.merge(
             left=self.df,
             right=signal_triggers_df,
@@ -82,12 +77,49 @@ class SignalGenerator():
         return final_signal
 
     def _generate_final_signal_with_constraints(self, initial_signal):
-        pass
+        dates = self.df.index.tolist()
+        triggers_dates = dates[self.max_lookback:]
+        current = 0
+        previous = 0
+        signal_triggers = {k: [] for k in self._triggers}
+        _wait_entry_confirmation_tracker = None
+        _expected_signal = None
+
+        for idx in range(len(triggers_dates)):
+            current = initial_signal[idx]
+            # TODO-1 - test for logic with only wait_entry_confirmation
+            # TODO-2 - implement logic for hold X days
+            # TODO-3 - test for logic with only hold X days
+            # TODO-4 - test for logic with both contraints
+            if self.wait_entry_confirmation:
+                # Case-1 Tracker not active and entry signal. Set up expected signal and start to wait.
+                if not _wait_entry_confirmation_tracker and current in (-1, 1):
+                    _expected_signal == current
+                    _wait_entry_confirmation_tracker = 1
+                    self._remain_position(signal_triggers)
+                # Case-2 Tracker not active, but no entry signal. Do nothing.
+                elif _wait_entry_confirmation_tracker and current == 0:
+                    self._remain_position(signal_triggers)
+                # Case-3 Tracker is active, but still need to wait.
+                elif _wait_entry_confirmation_tracker < self.wait_entry_confirmation:
+                    _wait_entry_confirmation_tracker += 1
+                    self._remain_position(signal_triggers)
+                # Case-4 Waited enough time. Check if signal is what it was expected
+                elif _wait_entry_confirmation_tracker == self.wait_entry_confirmation:
+                    # signal as expected
+                    if current == _expected_signal:
+                        self._change_position(previous, current, signal_triggers)
+                    # Signal is opposite or neutral. Deactivate tracker and force going into neutral.
+                    elif current == -1*_expected_signal:
+                        self._wait_entry_confirmation_tracker = None
+                        current = 0
+                        self._change_position(previous, current, signal_triggers)
+
+            previous = current
 
     def _remain_position(self, signal_triggers):
         for trigger in self._triggers:
-            last_trigger = signal_triggers[trigger][-1]
-            signal_triggers[trigger].append(last_trigger)
+            signal_triggers[trigger].append(0)
 
     def _change_position(self, previous, current, signal_triggers):
         new_triggers ={k: 0 for k in self._triggers}
@@ -198,80 +230,7 @@ class SignalGenerator():
                 pass
             initial_signal.append(signal)
             idx += 1
-
-    def deprecated_generate(self):
-        idx = self.max_lookback
-        while idx < self.index:
-            result_idx = idx-self.max_lookback
-            # get results from simple rules
-            for simple_rule in self.simple_rules:
-                # self.log.debug('cheking simple rule: {r} for idx: {i}'.format(r=simple_rule['id'], i=idx))
-                self.rules_results[simple_rule['id']].append(
-                    simple_rule['func'](
-                        self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
-                        **simple_rule['params']
-                    )
-                )
-            # get results from convoluted rules
-            for conv_rule in self.convoluted_rules:
-                # self.log.debug('cheking convoluted rule: {r} for idx: {i}'.format(r=conv_rule['id'], i=idx))
-                simple_rules_results = self._get_simple_rules_results(conv_rule['simple_rules'], result_idx)
-                self.rules_results[conv_rule['id']].append(
-                    self.combine_simple_results(
-                        rules_results=simple_rules_results,
-                        aggregation_type=conv_rule['aggregation_type'], 
-                        aggregation_params=conv_rule['aggregation_params'],
-                    )
-                )
-
-            # create initial signal
-            if self.strategy_type == 'fixed':
-                for rule in self.strategy_rules:
-                    self._signal = self.rules_results[rule][result_idx]
-                    # use signal from first encountered rule with -1 or 1. or leave 0
-                    if self._signal in (-1, 1):
-                        break
-            elif self.strategy_type == 'learning':
-                # not implemented
-                pass
-
-            # if wait for entry confirmation constrain is on
-            if self.wait_entry_confirmation:
-                # 0-> 1, 0-> -1, 1-> -1, -1 -> 1   te chce
-                # a co z: -1 -> 0   oraz 1 -> 0
-                # tracker is not yet active. set up expected signal and activate tracker
-                if self._wait_entry_confirmation_tracker == -1 and self._signal in (-1, 1):
-                    _expected_signal == self._signal
-                    self._wait_entry_confirmation_tracker = 1
-                    final_signal = self._previous_signal
-                # tracker not active but neutral signal
-                elif self._wait_entry_confirmation_tracker == -1 and self._signal == 0:
-                    final_signal = self._signal
-                # trancker active. still have to wait
-                elif self._wait_entry_confirmation_tracker < self.wait_entry_confirmation:
-                    self._wait_entry_confirmation_tracker += 1
-                    final_signal = self._previous_signal
-                # already waited enough days. check if signal is what it is expectd
-                elif self._wait_entry_confirmation_tracker == self.wait_entry_confirmation:
-                    # signal as expected or neutral
-                    if self._signal == _expected_signal or self._signal == 0:
-                        final_signal = self._signal
-                        self._wait_entry_confirmation_tracker = -1
-                    # signal is opposite to what was expected, go to neutral position
-                    elif self._signal == _expected_signal * -1:
-                        self._wait_entry_confirmation_tracker = -1
-                        final_signal = 0
-
-            
-            # if hold X days constrain is on
-            # if (
-            #     self.hold_x_days and 
-            #     self._signal in (-1, 1) and 
-            # ):
-
-            idx += 1
-
-        
+      
 
 def main():
     pricing_df = gpw_data.GPWData().load(symbols='CCC', from_csv=True)

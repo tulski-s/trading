@@ -192,3 +192,17 @@ def test_convoluted_rule_results_appending(config_3, pricing_df1):
     convoluted_rule_output = sg.rules_results['trend+supprot/resistance']
     assert(convoluted_rule_output == expected_convoluted_rule_output)
 
+
+def test_generate_final_signal_no_constraints(pricing_df1, config_2):
+    sg = SignalGenerator(df=pricing_df1, config=config_2)
+    test_initial_results = [1,1,1,1,0,0,0,-1,-1,1]
+    test_final_results = sg._generate_final_signal(test_initial_results)
+    test_final_results.drop(['close'], axis=1, inplace=True)
+    expected_results = pd.DataFrame({
+        'entry_long': [0,0,0] + [1,0,0,0,0,0,0,0,0,1],
+        'exit_long': [0,0,0] + [0,0,0,0,1,0,0,0,0,0],
+        'entry_short': [0,0,0] + [0,0,0,0,0,0,0,1,0,0],
+        'exit_short': [0,0,0] + [0,0,0,0,0,0,0,0,0,1],
+    })
+    assert(expected_results.to_dict() == test_final_results.to_dict())
+

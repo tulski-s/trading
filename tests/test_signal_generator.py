@@ -121,6 +121,29 @@ def config_4():
 
 
 @pytest.fixture()
+def config_5():
+    return {
+        'rules': [
+            {
+                'id': 'mock_rule',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 1,
+                'params': {},
+                'func': simple_rule1,
+            }
+        ],
+        'strategy': {
+            'type': 'fixed',
+            'strategy_rules': ['mock_rule'],
+            'constraints': {
+                'hold_x_days': 2
+            }
+        }
+    }
+
+
+@pytest.fixture()
 def pricing_df1():
     return pd.DataFrame({
         'close': [20,21,45,32,15,45,23,21,21,12,14,48,15],
@@ -241,5 +264,19 @@ def test_generate_final_signal_with_wait_for_confirmation(pricing_df1, config_4)
         'exit_long': [0] + [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
         'entry_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
         'exit_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    })
+    assert(expected_results.to_dict() == test_final_results.to_dict())
+
+
+def test_generate_final_signal_with_hold_for_x_days(pricing_df1, config_5):
+    sg = SignalGenerator(df=pricing_df1, config=config_5)
+    test_initial_results = [1, 1, 1, 1, 1, -1, -1, -1, -1, 0, 0, 0]
+    test_final_results = sg._generate_final_signal_with_constraints(test_initial_results)
+    test_final_results.drop(['close'], axis=1, inplace=True)
+    expected_results = pd.DataFrame({
+        'entry_long': [0] + [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
+        'exit_long': [0] + [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+        'entry_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
+        'exit_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
     })
     assert(expected_results.to_dict() == test_final_results.to_dict())

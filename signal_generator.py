@@ -79,17 +79,15 @@ class SignalGenerator():
     def _generate_final_signal_with_constraints(self, initial_signal):
         dates = self.df.index.tolist()
         triggers_dates = dates[self.max_lookback:]
-        current = 0
-        previous = 0
+        current, previous, idx = 0, 0, 0
         signal_triggers = {k: [] for k in self._triggers}
         _wait_entry_confirmation_tracker = None
         _previous_at_wait_start = None
         _expected_signal = None
-        for idx in range(len(triggers_dates)):
+        while idx < len(triggers_dates):
             current = initial_signal[idx]
-            # TODO-1 - implement logic for hold X days -> e.g. while + skip indexes
-            # TODO-2 - test for logic with only hold X days
-            # TODO-3 - test for logic with both contraints
+            # TODO-1 - implement logic for both constraints
+            # TODO-2 - test for logic with both contraints
             if self.wait_entry_confirmation:
                 # Case-0 Tracker not active, already in long/short position
                 if not _wait_entry_confirmation_tracker and (current == previous):
@@ -118,7 +116,24 @@ class SignalGenerator():
                         self._change_position(_previous_at_wait_start, current, signal_triggers)
                     _wait_entry_confirmation_tracker = None
                     _previous_at_wait_start = None
+            if not self.wait_entry_confirmation and self.hold_x_days:
+                if current == previous:
+                    self._remain_position(signal_triggers)
+                elif current in (-1, 1):
+                    # enter position
+                    self._change_position(previous, current, signal_triggers)
+                    # stay there for x days
+                    self._remain_position(signal_triggers, days=self.hold_x_days)
+                    # next go back to neutral position
+                    previous, current = current, 0
+                    self._change_position(previous, current, signal_triggers)
+                    # skip proper number of days as you just assigned all positions
+                    # that should be +1d for changed position + Xdays holding
+                    idx += self.hold_x_days + 1
+                else:
+                    self._change_position(previous, current, signal_triggers)
             previous = current
+            idx += 1
         signal_triggers_df = pd.DataFrame(signal_triggers, index=self.df.index[self.max_lookback:])
         final_signal = pd.merge(
             left=self.df,
@@ -130,9 +145,9 @@ class SignalGenerator():
         final_signal.fillna(0, inplace=True)
         return final_signal
 
-    def _remain_position(self, signal_triggers):
+    def _remain_position(self, signal_triggers, days=1):
         for trigger in self._triggers:
-            signal_triggers[trigger].append(0)
+            signal_triggers[trigger].extend(days*[0])
 
     def _change_position(self, previous, current, signal_triggers):
         new_triggers ={k: 0 for k in self._triggers}
@@ -297,66 +312,3 @@ if __name__ == '__main__':
     main()
 
 
-"""
-which data structures should I use ???
-
-in backtester I have sth like:
-signals = {
-    symbol_X: {
-        'close': {
-            '2019-01-01': 12,
-            '2019-01-02': 13,
-            '2019-01-03': 10,
-            ...
-        },
-        'exit_long': {
-            '2019-01-01': 0,
-            '2019-01-02': 0,
-            '2019-01-03': 1,
-            ...
-        }
-    }
-}
-
-to tam dziala spoko bo latwo skoordynowac wiele timeseries (access is by ds key) tylko tam nigy nie patrze X dni w tyl....
-
-tutaj jak bym chcial tego uzyc to by musial wiedziec ktore dni ida i skomponowac array...
-
-inna opcja mogloby byc poprostu skomponowanie duzej DataFrame gdzie index to ds a columny to kolejne timeseries. minus tutaj
-tylko taki ze iteruje wlasnie przez ta dataframe. nie koniec swiata, troche mnie performat. no i prierdolenie sie z df...
-kolejna mozlwiosc to nie rabanie sie z pandas, tylko zrobienie to w numpy... czy to cos wielce zmini?
-
-to opcja z pandas szczerze prezentuje sie spoko.... no i jest tylko 1 iteracja wiec performance nie bedzie tutaj
-problemu?
-
-chyba ze przygotowalbym dane w taki sposob zebym mial:
-data = {
-    ts1 = arr[]
-    ts2 = arr[]
-    ...
-}
-gdzie ts1,2..X maja arrays o dokladnie takim samym rozmiarze i odpowiadajace dokladnie tym samym dnia.
-pracowalbym wtedy na indexach i nie byloby problemu
-
-nie chce przekombinowac na tym etapie... ale najwiekszym problemem bedzie tak sie nie bede zgadzaly dni... cos przesudziete
-pomiedzy dwoma ts i jedna nie odpowiada drugiej.
-wpakowanie wszystkiego do DF, uporzadkowania a potem "wyciecie" tego co Cie interesuje brzmi spoko. 
-
-zwykle nie bedzie duzo timeseries. tylko 1 sybol i ewentualnie dane contextualne...
-
-
-jest kolejna mozliwos. SignalGenerator moze zakladac ze dostaje DF gdzie wszystko jest juz przygotowane. i tak kazda kolumna
-to jest poprostu timeseries (wszysktie szeruja common indeks). dla wszystkich przykladow z mojego POC bedize sie to zgadzalo
-
-
-wygladaloby tak. do strategy dajesz dataframe. w config precyzujesz kolumne(y). a potem to jest przerabiane na 
-data = {
-    ts1 = arr[]
-    ts2 = arr[]
-    ...
-}
-gdzie wszystkie indeksy itp sie zgadzaja bo sa wziete z datarame.
-
-
-
-"""

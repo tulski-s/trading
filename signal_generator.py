@@ -53,6 +53,13 @@ class SignalGenerator():
         return self._generate_final_signal(initial_signal)
 
     def _generate_final_signal(self, initial_signal):
+        """
+        Transforms initial signal to the final output. That is, it takes sequence of positions like
+        1,1,0,0,0,-1,-1 and outputs oryginal pricing dataframe with 4 additional columns: enter_long,
+        exit_long, enter_short, exit_short. Such an format is expected by backtester.
+
+        No constraints are implemented here such just transformation is performed.
+        """
         dates = self.df.index.tolist()
         triggers_dates = dates[self.max_lookback:]
         current = 0
@@ -77,6 +84,15 @@ class SignalGenerator():
         return final_signal
 
     def _generate_final_signal_with_constraints(self, initial_signal):
+        """
+        Same as _generate_final_signal but with constraints implementation. Contraints can be used 
+        separately or together. Available contraints are:
+        -> wait_entry_confirmation - wait without changing position for defined amount of
+        days. On the last waiting day checks if rule still shows position which was initally
+        attmpted to enter. If signal is the same enter. Else, change to neutral position.
+        -> hold_x_days - after entering position hold additional x days. Change to neutral
+        position after that.
+        """
         dates = self.df.index.tolist()
         triggers_dates = dates[self.max_lookback:]
         current, previous, idx = 0, 0, 0
@@ -110,6 +126,12 @@ class SignalGenerator():
                     # signal as expected
                     if current == _expected_signal:
                         self._change_position(_previous_at_wait_start, current, signal_triggers)
+                        # if both wait_entry_confirmation and hold_x_days are active
+                        if self.hold_x_days:
+                            self._remain_position(signal_triggers, days=self.hold_x_days)
+                            previous, current = current, 0
+                            self._change_position(previous, current, signal_triggers)
+                            idx += self.hold_x_days + 1
                     # Signal is opposite or neutral. Deactivate tracker and force going into neutral.
                     elif current == -1*_expected_signal:
                         current = 0
@@ -146,10 +168,16 @@ class SignalGenerator():
         return final_signal
 
     def _remain_position(self, signal_triggers, days=1):
+        """
+        Keep current position by not triggering any signal to change position.
+        """
         for trigger in self._triggers:
             signal_triggers[trigger].extend(days*[0])
 
     def _change_position(self, previous, current, signal_triggers):
+        """
+        Changes long/short/neutral "previous" position to current one.
+        """
         new_triggers ={k: 0 for k in self._triggers}
         if previous == 1:
             new_triggers['exit_long'] = 1
@@ -222,6 +250,14 @@ class SignalGenerator():
         return rules_results
 
     def _generate_initial_signal(self):
+        """
+        Goes over simple and convoluted rules to generate rules results. Then executes strategy to get
+        initial signal. Rules should be implemented the way that generated result is sequence of positions.
+        For example: 1,1,0,0,-1,-1 (2 days holding long, 2 days neutral and 2 days short). If the rule
+        logic is more "event driven" (e.g enter if something happened, exit if sth different happened)
+        then use convoluted rule and appropriate `aggregation_type`. Such an output will be then transformed
+        correctly.
+        """
         initial_signal = []
         idx = self.max_lookback
         while idx < self.index:

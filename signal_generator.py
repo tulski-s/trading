@@ -83,22 +83,25 @@ class SignalGenerator():
         previous = 0
         signal_triggers = {k: [] for k in self._triggers}
         _wait_entry_confirmation_tracker = None
+        _previous_at_wait_start = None
         _expected_signal = None
-
         for idx in range(len(triggers_dates)):
             current = initial_signal[idx]
-            # TODO-1 - test for logic with only wait_entry_confirmation
-            # TODO-2 - implement logic for hold X days
-            # TODO-3 - test for logic with only hold X days
-            # TODO-4 - test for logic with both contraints
+            # TODO-1 - implement logic for hold X days -> e.g. while + skip indexes
+            # TODO-2 - test for logic with only hold X days
+            # TODO-3 - test for logic with both contraints
             if self.wait_entry_confirmation:
+                # Case-0 Tracker not active, already in long/short position
+                if not _wait_entry_confirmation_tracker and (current == previous):
+                    self._remain_position(signal_triggers)
                 # Case-1 Tracker not active and entry signal. Set up expected signal and start to wait.
-                if not _wait_entry_confirmation_tracker and current in (-1, 1):
-                    _expected_signal == current
+                elif not _wait_entry_confirmation_tracker and current in (-1, 1):
+                    _expected_signal = current
                     _wait_entry_confirmation_tracker = 1
+                    _previous_at_wait_start = previous
                     self._remain_position(signal_triggers)
                 # Case-2 Tracker not active, but no entry signal. Do nothing.
-                elif _wait_entry_confirmation_tracker and current == 0:
+                elif not _wait_entry_confirmation_tracker and current == 0:
                     self._remain_position(signal_triggers)
                 # Case-3 Tracker is active, but still need to wait.
                 elif _wait_entry_confirmation_tracker < self.wait_entry_confirmation:
@@ -108,14 +111,24 @@ class SignalGenerator():
                 elif _wait_entry_confirmation_tracker == self.wait_entry_confirmation:
                     # signal as expected
                     if current == _expected_signal:
-                        self._change_position(previous, current, signal_triggers)
+                        self._change_position(_previous_at_wait_start, current, signal_triggers)
                     # Signal is opposite or neutral. Deactivate tracker and force going into neutral.
                     elif current == -1*_expected_signal:
-                        self._wait_entry_confirmation_tracker = None
                         current = 0
-                        self._change_position(previous, current, signal_triggers)
-
+                        self._change_position(_previous_at_wait_start, current, signal_triggers)
+                    _wait_entry_confirmation_tracker = None
+                    _previous_at_wait_start = None
             previous = current
+        signal_triggers_df = pd.DataFrame(signal_triggers, index=self.df.index[self.max_lookback:])
+        final_signal = pd.merge(
+            left=self.df,
+            right=signal_triggers_df,
+            how='left',
+            left_index=True,
+            right_index=True
+        )
+        final_signal.fillna(0, inplace=True)
+        return final_signal
 
     def _remain_position(self, signal_triggers):
         for trigger in self._triggers:

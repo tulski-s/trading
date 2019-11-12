@@ -104,8 +104,6 @@ class SignalGenerator():
         _expected_signal = None
         while idx < len(triggers_dates):
             current = initial_signal[idx]
-            # TODO-1 - implement logic for both constraints
-            # TODO-2 - test for logic with both contraints
             if self.wait_entry_confirmation:
                 # Case-0 Tracker not active, already in long/short position
                 if not _wait_entry_confirmation_tracker and (current == previous):
@@ -134,8 +132,8 @@ class SignalGenerator():
                             previous, current = current, 0
                             self._change_position(previous, current, signal_triggers)
                             idx += self.hold_x_days + 1
-                    # Signal is opposite or neutral. Deactivate tracker and force going into neutral.
-                    elif current == -1*_expected_signal:
+                    # Signal different from what was expected = eactivate tracker and force going into neutral.
+                    else:
                         current = 0
                         self._change_position(_previous_at_wait_start, current, signal_triggers)
                     _wait_entry_confirmation_tracker = None

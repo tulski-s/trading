@@ -28,6 +28,9 @@ class SignalGenerator():
         if config['strategy'].get('constraints', None):
             self.wait_entry_confirmation = config['strategy']['constraints'].get('wait_entry_confirmation', None)
             self.hold_x_days = config['strategy']['constraints'].get('hold_x_days', None)
+        else:
+            self.wait_entry_confirmation = None
+            self.hold_x_days = None
         self.max_lookback = 0
         for rule in config['rules']:
             # initiate empty list for rules outputs
@@ -48,7 +51,6 @@ class SignalGenerator():
     def generate(self):
         initial_signal = self._generate_initial_signal()
         if any([self.wait_entry_confirmation, self.hold_x_days]):
-            # TODO(slaw) -> implement _generate_final_signal_with_constraints
             return self._generate_final_signal_with_constraints(initial_signal)
         return self._generate_final_signal(initial_signal)
 
@@ -294,57 +296,5 @@ class SignalGenerator():
                 pass
             initial_signal.append(signal)
             idx += 1
+        return initial_signal
       
-
-def main():
-    pricing_df = gpw_data.GPWData().load(symbols='CCC', from_csv=True)
-
-    test_config = {
-        'rules': [
-            {
-                'id': 'trend',
-                'type': 'simple',
-                'ts': 'close',
-                'lookback': 20,
-                'params': {},
-                'func': rules.trend,
-            },
-            {
-                'id': 'supprot/resistance',
-                'type': 'simple',
-                'ts': 'close',
-                'lookback': 30,
-                'params': {},
-                'func': rules.support_resistance,
-            },
-            {
-                'id': 'trend+supprot/resistance',
-                'type': 'convoluted',
-                'simple_rules': ['trend', 'supprot/resistance'],
-                'aggregation_type': 'combine',
-                'aggregation_params':{'mode':'strong'}
-            },
-        ],
-        'strategy': {
-            'type': 'fixed',
-            'strategy_rules': ['trend+supprot/resistance'],
-            'constraints': {
-                'hold_x_days': 5,
-                'wait_entry_confirmation': 3
-            }
-        }
-    }
-
-    signal_generator = SignalGenerator(
-        df = pricing_df,
-        config = test_config,
-        debug=True
-    )
-
-    # signal_generator.generate()
-    signal_generator._generate_final_signal([1,1,1,1,0,0,0,-1,-1,-1])
-
-if __name__ == '__main__':
-    main()
-
-

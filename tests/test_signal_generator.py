@@ -22,6 +22,20 @@ def simple_rule1(arr):
     return 0
 
 
+def simple_rule2(arr):
+    d = {
+        0: 0, 1:0, 2:1, 3:0, 4:0, 5:0, 6:-1, 7:0, 8:0, 9:0, 10:1, 11:-1, 12:0, 13:0
+    }
+    return d[arr[-1]]
+
+
+def simple_rule3(arr):
+    d = {
+        0: 0, 1:0, 2:0, 3:0, 4:1, 5:0, 6:-1, 7:0, 8:0, 9:1, 10:0, 11:1, 12:1, 13:0
+    }
+    return d[arr[-1]]
+
+
 @pytest.fixture()
 def config_1():
     return {
@@ -168,6 +182,86 @@ def config_6():
 
 
 @pytest.fixture()
+def config_7():
+    return {
+        'rules': [
+            {
+                'id': 'simple_rule_2',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 1,
+                'params': {},
+                'func': simple_rule2,
+            },
+            {
+                'id': 'conv',
+                'type': 'convoluted',
+                'simple_rules': ['simple_rule_2'],
+                'aggregation_type': 'state-based',
+                'aggregation_params': {
+                    'long': [
+                        {'simple_rule_2': 1}
+                    ],
+                    'short': [
+                        {'simple_rule_2': -1}
+                    ]
+                }
+            }
+        ],
+        'strategy': {
+            'type': 'fixed',
+            'strategy_rules': ['conv']
+        }
+    }
+
+
+@pytest.fixture()
+def config_8():
+    return {
+        'rules': [
+            {
+                'id': 'simple_rule_2',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 1,
+                'params': {},
+                'func': simple_rule2,
+            },
+            {
+                'id': 'simple_rule_3',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 1,
+                'params': {},
+                'func': simple_rule3,
+            },
+            {
+                'id': 'conv',
+                'type': 'convoluted',
+                'simple_rules': ['simple_rule_2', 'simple_rule_3'],
+                'aggregation_type': 'state-based',
+                'aggregation_params': {
+                    'long': [
+                        {'simple_rule_2': 1, 'simple_rule_3': 0}
+                    ],
+                    'short': [
+                        {'simple_rule_2': -1, 'simple_rule_3': 0},
+                        {'simple_rule_2': -1, 'simple_rule_3': -1},
+                    ],
+                    'neutral': [
+                        {'simple_rule_2': 0, 'simple_rule_3': 1}
+                    ]
+                }
+            }
+        ],
+        'strategy': {
+            'type': 'fixed',
+            'strategy_rules': ['conv']
+        }
+    }
+
+
+@pytest.fixture()
 def pricing_df1():
     return pd.DataFrame({
         'close': [20,21,45,32,15,45,23,21,21,12,14,48,15],
@@ -178,6 +272,12 @@ def pricing_df1():
 def pricing_df2():
     return pd.DataFrame({
         'close': [2,1,5,0,0,0,0,0,-2,-5,-7,10,20],
+    })
+
+@pytest.fixture()
+def pricing_df3():
+    return pd.DataFrame({
+        'close': list(range(14)),
     })
 
 
@@ -261,6 +361,28 @@ def test_convoluted_rule_results_appending(config_3, pricing_df1):
     sg._generate_initial_signal()
     convoluted_rule_output = sg.rules_results['trend+supprot/resistance']
     assert(convoluted_rule_output == expected_convoluted_rule_output)
+
+
+def test_combining_state_based_convoluted_rule_binary(config_7, pricing_df3):
+    sg = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+    )
+    sg._generate_initial_signal()
+    expected_initial_signal = [0, 1, 1, 1, 1, -1, -1, -1, -1, 1, -1, -1, -1]
+    initial_signal = sg.rules_results['conv']
+    assert(expected_initial_signal == initial_signal)
+
+
+def test_combining_state_based_convoluted_rule_3_states(config_8, pricing_df3):
+    sg = SignalGenerator(
+        df=pricing_df3,
+        config=config_8,
+    )
+    sg._generate_initial_signal()
+    expected_initial_signal = [0, 1, 1, 0, 0, -1, -1, -1, 0, 1, 1, 0, 0]
+    initial_signal = sg.rules_results['conv']
+    assert(expected_initial_signal == initial_signal)
 
 
 def test_generate_final_signal_no_constraints(pricing_df1, config_2):

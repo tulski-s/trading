@@ -45,6 +45,10 @@ class SignalGenerator():
                 if self.max_lookback < rule['lookback']:
                     self.max_lookback = rule['lookback']
             elif rule['type'] == 'convoluted':
+                if rule['aggregation_type'] == 'state-based':
+                    rule['_is_state_base'] = True
+                else:
+                    rule['_is_state_base'] = False
                 self.convoluted_rules.append(rule)
         self._triggers = ('entry_long', 'exit_long', 'entry_short', 'exit_short')
 
@@ -225,10 +229,21 @@ class SignalGenerator():
             else:
                 raise NotImplementedError('mode "{}" for "combine" aggregation is not supported'.format(mode))
         elif aggregation_type == 'state-based':
-            # Implement it later when doint event-based strategies. based on dict. same as fixed?
-            # It should return the same sequential output (eg. 11110000111-1-1-1-1000) showing position
-            # at each day. Same as "combine" with all the votings
-            pass
+            _conv_rule_id = list(rules_results.keys())[0]
+            if not len(self.rules_results[_conv_rule_id]) == 0:
+                _previous_state = self.rules_results[_conv_rule_id][-1]
+            else:
+                _previous_state = 0
+            position_ints = {'long': 1, 'short': -1, 'neutral': 0}
+            for position in aggregation_params.keys():
+                for state in aggregation_params[position]:
+                    _matches = [
+                        True if rules_results[_conv_rule_id][rule] == result else False
+                        for rule, result in state.items()    
+                    ]
+                    if all(_matches):
+                        return position_ints[position]
+            return _previous_state
         else:
             raise NotImplementedError('aggregation_type "{}" is not supported'.format(aggregation_type))
 
@@ -240,14 +255,16 @@ class SignalGenerator():
         """
         return self.data[ts_name][idx-lookback:idx+1]
 
-    def _get_simple_rules_results(self, rules_ids, result_idx):
+    def _get_simple_rules_results(self, rules_ids, result_idx, as_dict=False, conv_rule_id=None):
         """
         `rules_ids` is iterable witch ids of simple rules. `result_idx` should be index of results
         base on which to output combined result.
         """
-        rules_results = [self.rules_results[rid][result_idx] for rid in rules_ids]
-        # for the future map based convoluted rules it will result either list or dict
-        return rules_results
+        if as_dict:
+            return {
+                conv_rule_id: {rid: self.rules_results[rid][result_idx] for rid in rules_ids}
+            }
+        return [self.rules_results[rid][result_idx] for rid in rules_ids]
 
     def _generate_initial_signal(self):
         """
@@ -264,7 +281,6 @@ class SignalGenerator():
             result_idx = idx-self.max_lookback
             # get results from simple rules
             for simple_rule in self.simple_rules:
-                # self.log.debug('cheking simple rule: {r} for idx: {i}'.format(r=simple_rule['id'], i=idx))
                 self.rules_results[simple_rule['id']].append(
                     simple_rule['func'](
                         self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
@@ -273,8 +289,12 @@ class SignalGenerator():
                 )
             # get results from convoluted rules
             for conv_rule in self.convoluted_rules:
-                # self.log.debug('cheking convoluted rule: {r} for idx: {i}'.format(r=conv_rule['id'], i=idx))
-                simple_rules_results = self._get_simple_rules_results(conv_rule['simple_rules'], result_idx)
+                simple_rules_results = self._get_simple_rules_results(
+                    conv_rule['simple_rules'],
+                    result_idx,
+                    as_dict=conv_rule['_is_state_base'],
+                    conv_rule_id=conv_rule['id'],
+                )
                 self.rules_results[conv_rule['id']].append(
                     self.combine_simple_results(
                         rules_results=simple_rules_results,

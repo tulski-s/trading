@@ -72,3 +72,25 @@ def support_resistance(arr, e=False, b=False):
     elif price < support-(support*b):
         return -1
     return 0
+
+
+def price_filter(arr, x=None):
+    """
+    An x per cent filter is defined as follows: If the daily closing price of a particular security moves 
+    up at least x per cent, buy and hold the security until its price moves down at least x per cent from 
+    a subsequent high, at which time simultaneously sell and go short.
+
+    what is subsequent high?
+    1) A subsequent high is the highest closing price achieved while holding a particular long position. 
+    Likewise, a subsequent low is the lowest closing price achieved while holding a particular short position
+    2) Alternatively, a low(high) can be defined as the most recent closing price that is less (greater) than 
+    the "e" previous closing prices
+
+    Moge sie trzymac sztywno opisanych zasad. Tzn. jezeli trzymam przez 40 dni to brac pod uwage te 40 dni.
+    Jak przez 28 to 28. Inna mozliwosc to brac pod uwage zawsze tylko loopback period. To podoba mi sie bardziej
+    bo jest blizej zaimplementowanej filozofii dzialania ktora mialem w glowie.
+
+    Masz w notatkach wiecej. To jest generalnie colvoluted rule z do 2 zasad. Nie rozni sie zbytnio od supp/ress
+    z parametrem b. 
+    """
+    pass

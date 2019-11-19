@@ -1,16 +1,15 @@
 # 3rd party
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 
 # custom
 from commons import (
     setup_logging,
 )
-
 import rules
-
 import gpw_data
-
 
 class SignalGenerator():
     def __init__(self, df=None, config=None, logger=None, debug=False):
@@ -32,7 +31,10 @@ class SignalGenerator():
             self.wait_entry_confirmation = None
             self.hold_x_days = None
         self.max_lookback = 0
-        for rule in config['rules']:
+        self.rules_idxs = {}
+        for idx, rule in enumerate(config['rules']):
+            # build map -> idx: rule_id
+            self.rules_idxs[rule['id']] = idx 
             # initiate empty list for rules outputs
             self.rules_results[rule['id']] = []
             # segregate simple and convoluted rules
@@ -57,6 +59,88 @@ class SignalGenerator():
         if any([self.wait_entry_confirmation, self.hold_x_days]):
             return self._generate_final_signal_with_constraints(initial_signal)
         return self._generate_final_signal(initial_signal)
+
+    def plot_strategy_result(self, df, price_label=None):
+        # get long/short periods
+        periods = {}
+        for _type in ('long', 'short'):
+            idxs_entries = df.index[df['entry_'+_type] == 1].tolist()
+            idxs_exits = df.index[df['exit_'+_type] == 1].tolist()
+            if len(idxs_entries) > len(idxs_exits):
+                idxs_entries = idxs_entries[:-1]            
+            elif len(idxs_exits) > len(idxs_entries):
+                idxs_exits = idxs_exits[:-1]            
+            elif len(idxs_entries) != len(idxs_exits):
+                # logically they can differ only by 1, so if its not the case sth is wrong
+                raise ValueError
+            periods[_type]  = list(zip(idxs_entries, idxs_exits))
+        # plot line with proper timeseries (line for now, no candles as they are fucking slow on graph)
+        fig, ax = plt.subplots(figsize=(7,5))
+        ax.plot(df[price_label], color='black', linestyle='-', linewidth=1)
+        for lp in periods['long']:
+            if df[price_label][lp[1]] - df[price_label][lp[0]] <= 0:
+                ax.axvspan(lp[0], lp[1], alpha=0.5, color='red')
+            else:
+                ax.axvspan(lp[0], lp[1], alpha=0.5, color='green')
+        for lp in periods['short']:
+            if df[price_label][lp[1]] - df[price_label][lp[0]] <= 0:
+                ax.axvspan(lp[0], lp[1], alpha=0.5, color='green')
+            else:
+                ax.axvspan(lp[0], lp[1], alpha=0.5, color='red')
+
+    def plot_rule_results(self, rule_id, ts=None):
+        _rule_idx = self.rules_idxs[rule_id]
+        _rule_type = self.config['rules'][_rule_idx]['type']
+        if _rule_type == 'convoluted' and ts == None:
+            raise AttributeError('Chosen rule_id is convoluted hence needs explicit `ts` attribute')
+        if _rule_type == 'simple':
+            _lookback = self.config['rules'][_rule_idx]['lookback']
+            _ts = self.config['rules'][_rule_idx]['ts']
+        elif _rule_type == 'convoluted':
+            lookbacks = []
+            for s_rule_id in self.config['rules'][_rule_idx]['simple_rules']:
+                lookbacks.append(
+                    self.config['rules'][self.rules_idxs[s_rule_id]]['lookback']
+                )
+            _lookback = max(lookbacks)
+            _ts = ts
+        dates = self.df.index.tolist()
+        results = _lookback*[0] + self.rules_results[rule_id]
+        reference_ts = self.df[_ts]
+        # find segments of continuous -1,0,1s for muliti-color line to plot
+        segments = []
+        prev_r = 999 # not valid number for result. just to instantiate
+        cols_map = {-1: 'red', 0: 'blue', 1: 'green'}
+        for i, cur_r in enumerate(results):
+            if cur_r != prev_r:
+                # append old segment and strat the new one
+                if i > 0:
+                    segments.append(segment)
+                    segment = [
+                        [dates[i-1], dates[i]],
+                        [reference_ts[i-1], reference_ts[i]],
+                        cols_map[cur_r]
+                    ]
+                else:
+                # first iteration. just start new segment with single element
+                    segment = [
+                        [dates[i]],
+                        [reference_ts[i]],
+                        cols_map[cur_r]
+                    ]
+            else:
+                segment[0].append(dates[i])
+                segment[1].append(reference_ts[i])
+            prev_r = cur_r
+        fig, ax = plt.subplots(figsize=(7,5))
+        for segment in segments:
+            ax.plot(
+                segment[0],
+                segment[1],
+                color=segment[2],
+                linestyle='-',
+                linewidth=2
+            )
 
     def _generate_final_signal(self, initial_signal):
         """
@@ -160,6 +244,13 @@ class SignalGenerator():
                     self._change_position(previous, current, signal_triggers)
             previous = current
             idx += 1
+        # if any signal trigger is longer than index, it means that entered somwehere near the end and
+        # hold posiition contraint made it to hold above index. truncating it here for simplicity
+        ref_length = len(self.df.index[self.max_lookback:])
+        if len(signal_triggers['entry_long']) > ref_length:
+            for trigger in self._triggers:
+                signal_triggers[trigger] = signal_triggers[trigger][:ref_length]
+
         signal_triggers_df = pd.DataFrame(signal_triggers, index=self.df.index[self.max_lookback:])
         final_signal = pd.merge(
             left=self.df,

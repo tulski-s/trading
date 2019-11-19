@@ -428,6 +428,21 @@ def test_generate_final_signal_with_hold_for_x_days(pricing_df1, config_5):
     assert(expected_results.to_dict() == test_final_results.to_dict())
 
 
+def test_generate_with_hold_for_x_days_exeed_index(pricing_df1, config_6):
+    config_6['strategy']['constraints']['hold_x_days'] = 100
+    init_results = [-1, 0, -1, 1, 1, -1, 1, 1, 1, 1, 0, 1]
+    sg = SignalGenerator(df=pricing_df1, config=config_6)
+    test_final_results = sg._generate_final_signal_with_constraints(init_results)
+    test_final_results.drop(['close'], axis=1, inplace=True)
+    expected_results = pd.DataFrame({
+        'entry_long': 13*[0],
+        'exit_long': 13*[0],
+        'entry_short': [0, 0, 0] + [1] + 9*[0],
+        'exit_short': 13*[0],
+    })
+    assert(expected_results.to_dict() == test_final_results.to_dict())
+
+
 def test_generate_final_signal_with_both_constraints(pricing_df1, config_6):
     sg = SignalGenerator(df=pricing_df1, config=config_6)
     test_initial_results = [-1, 0, -1, 1, 1, -1, 1, 1, 1, 1, 0, 1]

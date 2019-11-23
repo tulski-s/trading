@@ -14,6 +14,9 @@ def optimize_strategy(
         position_sizer=None, init_capital=None, optimize_for='sharpe', show_all=False,
         logger=None, debug=None, results_path=None
     ):
+    """
+    
+    """
     log = commons.setup_logging(logger=logger, debug=debug)
     options = {}
     # pack args and kwargs together into one dict

@@ -194,9 +194,3 @@ if __name__ == '__main__':
         optimize()
     else:
         run_strategy(args.days, args.debug)
-
-    # TODO-1 -> fully test filter rule (backtester+optimization)
-    # TODO-2 -> implement moving averages rule
-    # TODO-3 -> implement learning strategies (there are 2 kinds)
-    # TODO-4 -> implement result calculation (same as from the book. need all the bootstrap/monte carlo tests for data-mining)
-

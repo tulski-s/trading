@@ -8,7 +8,7 @@ import rules
 
 @pytest.fixture()
 def prices_global_sr():
-    return np.array([100, 210, 90, 80, 12, 60, 45, 78])
+    return np.array([100., 210., 90., 80., 12., 60., 45., 78.])
 
 
 @pytest.fixture()
@@ -87,4 +87,43 @@ def test_below_local_suport_with_b(prices_local_sr):
     arr = np.append(prices_local_sr, 143.82)
     rule_output = rules.support_resistance(arr, e=7, b=0.05)
     assert(rule_output == -1)
+
+
+def test_simple_ma_base_ver(prices_global_sr):
+    rule_output = rules.moving_average(prices_global_sr)
+    assert(rule_output == -1)
+
+
+def test_simple_ma_base_ver_with_b_neg(prices_global_sr):
+    arr = np.append(prices_global_sr, 86.05)
+    rule_output = rules.moving_average(arr, b=0.02)
+    assert(rule_output == -1)
+
+
+def test_simple_ma_base_ver_with_b_pos(prices_global_sr):
+    arr = np.append(prices_global_sr, 86.07)
+    rule_output = rules.moving_average(arr, b=0.02)
+    assert(rule_output == 1)
+
+
+def test_weighted_ma_base_ver(prices_global_sr):
+    rule_output = rules.moving_average(prices_global_sr, weigth_ma=True)
+    assert(rule_output == -1)
+
+
+def test_weighted_ma_base_ver_pos(prices_global_sr):
+    prices_global_sr[-1] = 119.3
+    rule_output = rules.moving_average(prices_global_sr, weigth_ma=True)
+    assert(rule_output == 1)
+
+
+def test_weighted_two_mas(prices_global_sr):
+    rule_output = rules.moving_average(prices_global_sr, weigth_ma=True, quick_ma_lookback=3)
+    assert(rule_output == -1)
+
+
+def test_weighted_two_mas_pos(prices_global_sr):
+    prices_global_sr[-1] = 180
+    rule_output = rules.moving_average(prices_global_sr, weigth_ma=True, quick_ma_lookback=2)
+    assert(rule_output == 1)
 

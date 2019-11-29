@@ -49,13 +49,13 @@ def _find_support_resistance(y, e=False):
 
 
 def _simple_average(arr):
-    return sum(arr)/len(y)
+    return sum(arr)/len(arr)
 
 
 def _weigted_average(arr):
     # latest price will be 2x more important than the earliest price
     weights = 1 + (2 / (np.array(list(range(1,len(arr)+1))[::-1])+1))
-    weighted_sum = sum(y*weights)
+    weighted_sum = sum(arr*weights)
     return weighted_sum / len(arr)
 
 
@@ -109,7 +109,7 @@ def moving_average(arr, weigth_ma=None, quick_ma_lookback=None, b=None):
         ma = mean(arr[:-1])
     # slower and quicker moving average (look at whole arr here for both averages)
     else:
-        val = mean(arr[len_y-1-quick_ma_lookback:])
+        val = mean(arr[len(arr)-1-quick_ma_lookback:])
         ma = mean(arr)
     threshold = ma if b == None else ma+(ma*b)
     if val > threshold:

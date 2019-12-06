@@ -21,7 +21,7 @@ class SignalGenerator():
         self.simple_rules = []
         self.convoluted_rules = []
         self.rules_results = {}
-        # TODO(slaw) - would be good to have validation of config file here
+        # TODO(slaw) - would be good to have config validation here
         self.strategy_type = config['strategy']['type']
         self.strategy_rules = config['strategy']['strategy_rules']
         if config['strategy'].get('constraints', None):
@@ -30,6 +30,31 @@ class SignalGenerator():
         else:
             self.wait_entry_confirmation = None
             self.hold_x_days = None
+        if config['strategy'].get('params', None):
+            self.strategy_memory_span = config['strategy']['params'].get('memory_span', None)
+            self.strategy_review_span = config['strategy']['params'].get('review_span', None)
+            self.strategy_metric = config['strategy']['params'].get('performance_metric', None)
+            self.strategy_price_label = config['strategy']['params'].get('price_label', None)
+        if self.strategy_type == 'learning':
+            # basic validity checks for the learning strategy
+            required_learning_params = [
+                self.strategy_memory_span, self.strategy_review_span, self.strategy_metric, self.strategy_price_label
+            ]
+            if not all(required_learning_params):
+                raise AttributeError(
+                    'Learning strategy required params: memory_span, review_span, performance_metric and price_label'
+                )
+            if self.strategy_review_span > self.strategy_memory_span:
+                raise AttributeError(
+                    'Strategy review_span has to be smaller than memory_span'
+                )
+            # calculate daily returns used by most of learning performance metrics
+            self.df.loc[:, 'prev_price__learning'] = df[self.strategy_price_label].shift(1)
+            self.df.loc[:, 'daily_returns__learning'] = df[self.strategy_price_label].pct_change()
+            self.df.loc[:, 'daily_log_returns__learning'] = (
+                np.log(df[self.strategy_price_label]) - df['prev_price__learning']
+            )
+
         self.max_lookback = 0
         self.rules_idxs = {}
         for idx, rule in enumerate(config['rules']):
@@ -368,9 +393,21 @@ class SignalGenerator():
         """
         initial_signal = []
         idx = self.max_lookback
+        signal = 0
+        # variables specific to learning strategy type
+        # performance_reviews = {}
+        if self.strategy_review_span > 10:
+            # to avoid too long periods at the begining of backfill, where one waits for enough data to 
+            # learn from. review_span will be dynamically increased over time
+            review_span = 5
+            _is_tmp_review_span = True
+        else:
+            review_span = self.strategy_review_span
+        review_span_tracker = 0
+
         while idx < self.index:
             result_idx = idx-self.max_lookback
-            # get results from simple rules
+            # get and append results from simple rules
             for simple_rule in self.simple_rules:
                 self.rules_results[simple_rule['id']].append(
                     simple_rule['func'](
@@ -378,7 +415,7 @@ class SignalGenerator():
                         **simple_rule['params']
                     )
                 )
-            # get results from convoluted rules
+            # get and append results from convoluted rules
             for conv_rule in self.convoluted_rules:
                 simple_rules_results = self._get_simple_rules_results(
                     conv_rule['simple_rules'],
@@ -393,17 +430,71 @@ class SignalGenerator():
                         aggregation_params=conv_rule['aggregation_params'],
                     )
                 )
-            # create initial signal
             if self.strategy_type == 'fixed':
                 for rule in self.strategy_rules:
                     signal = self.rules_results[rule][result_idx]
                     # use signal from first encountered rule with -1 or 1. or leave 0
                     if signal in (-1, 1):
                         break
-            elif self.strategy_type == 'learning':
-                # not implemented
-                pass
+            elif (self.strategy_type == 'learning'):
+                # tmp. note -> did I took already into the account VOTING tye of learning strategy?
+                if _is_tmp_review_span:
+                    # dynamic review span at the begining of the backfill
+                    if (review_span_tracker < review_span):
+                        # no time for review. keep the old set up
+                        pass
+                    elif review_span_tracker == review_span:
+                        # perform review
+                        self._review_performance(
+                            metric=self.strategy_metric,
+                            strat_idx=self._get_learning_start_idx(result_idx),
+                            end_idx=result_idx
+                        )
+                        # increase tmp review span
+                        # if increased tmp span is bigger than actual one. set tmp flag to False
+                        # new set up
+                        review_span_tracker = 0
+                else:
+                    # enough days to use actual review span
+                    if (review_span_tracker < review_span):
+                        # no time for review. keep the old set up
+                        pass
+                    elif review_span_tracker == review_span:
+                        # perform review
+                        # new set up
+                        review_span_tracker = 0
             initial_signal.append(signal)
             idx += 1
+            review_span_tracker += 1
+            
         return initial_signal
-      
+
+    def _get_learning_start_idx(self, result_idx):
+        # take all previous results if not enough days to fully cover memory span
+        if result_idx < self.strategy_memory_span-1:
+            return 0
+        return result_idx - self.strategy_memory_span + 1
+    
+    def _review_performance(self, metric=None, strat_idx=None, end_idx=None):
+        # need to adjust start/end idx here as they refers to results idx not (not idx within df)
+        df_start_idx = strat_idx+self.max_lookback
+        df_end_idx = end_idx+self.max_lookback+1
+        # for each rule and appropriate indices: calculate and store performance metric
+        for rule in self.strategy_rules:
+            # get given rules signals
+            rule_signals = np.array(self.rules_results[rule][strat_idx:end_idx+1])
+            # calculate performance metric agains signals
+            if self.strategy_metric == 'daily_returns':
+                daily_returns = np.array(self.df['daily_returns__learning'][df_start_idx:df_end_idx])
+                metric = sum(daily_returns * rule_signals)
+            elif self.strategy_metric == 'avg_log_returns':
+                daily_log_returns = np.array(self.df['daily_log_returns__learning'][df_start_idx:df_end_idx])
+                metric = avg(daily_log_returns * rule_signals)
+            elif self.strategy_metric == 'avg_log_returns_held_only':
+                pass
+            elif self.strategy_metric == 'voting':
+                pass
+
+
+
+

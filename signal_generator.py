@@ -36,6 +36,7 @@ class SignalGenerator():
             self.strategy_metric = config['strategy']['params'].get('performance_metric', None)
             self.strategy_price_label = config['strategy']['params'].get('price_label', None)
         if self.strategy_type == 'learning':
+            self.past_reviews = {rule_id: [] for rule_id in self.strategy_rules}
             # basic validity checks for the learning strategy
             required_learning_params = [
                 self.strategy_memory_span, self.strategy_review_span, self.strategy_metric, self.strategy_price_label
@@ -384,8 +385,8 @@ class SignalGenerator():
 
     def _generate_initial_signal(self):
         """
-        Goes over simple and convoluted rules to generate rules results. Then executes strategy to get
-        initial signal. Rules should be implemented the way that generated result is sequence of positions.
+        Goes over simple and convoluted rules to generate rules results. Then executes strategy (fixed or learning) 
+        to get initial signal. Rules should be implemented the way that generated result is sequence of positions.
         For example: 1,1,0,0,-1,-1 (2 days holding long, 2 days neutral and 2 days short). If the rule
         logic is more "event driven" (e.g enter if something happened, exit if sth different happened)
         then use convoluted rule and appropriate `aggregation_type`. Such an output will be then transformed
@@ -395,16 +396,16 @@ class SignalGenerator():
         idx = self.max_lookback
         signal = 0
         # variables specific to learning strategy type
-        # performance_reviews = {}
-        if self.strategy_review_span > 10:
-            # to avoid too long periods at the begining of backfill, where one waits for enough data to 
-            # learn from. review_span will be dynamically increased over time
-            review_span = 5
-            _is_tmp_review_span = True
-        else:
-            review_span = self.strategy_review_span
+        if self.strategy_type == 'learning':
+            # performance_reviews = {}
+            if self.strategy_review_span > 10:
+                # to avoid too long periods at the begining of backfill, where one waits for enough data to 
+                # learn from. review_span will be dynamically increased over time
+                review_span = 5
+                _is_tmp_review_span = True
+            else:
+                review_span = self.strategy_review_span
         review_span_tracker = 0
-
         while idx < self.index:
             result_idx = idx-self.max_lookback
             # get and append results from simple rules
@@ -436,54 +437,66 @@ class SignalGenerator():
                     # use signal from first encountered rule with -1 or 1. or leave 0
                     if signal in (-1, 1):
                         break
-            elif (self.strategy_type == 'learning'):
-                # tmp. note -> did I took already into the account VOTING tye of learning strategy?
+            elif self.strategy_type == 'learning':
+                if self.strategy_metric != 'voting':
+                    follow = {'_type': 'position'}
+                else:
+                    follow = {'_type': 'rule'}
                 if _is_tmp_review_span:
                     # dynamic review span at the begining of the backfill
-                    if (review_span_tracker < review_span):
-                        # no time for review. keep the old set up
-                        pass
-                    elif review_span_tracker == review_span:
-                        # perform review
-                        self._review_performance(
-                            metric=self.strategy_metric,
+                    if review_span_tracker == review_span:
+                        # perform review and reset span tracker
+                        follow['_value'] = self._review_performance(
                             strat_idx=self._get_learning_start_idx(result_idx),
-                            end_idx=result_idx
+                            end_idx=result_idx+1
                         )
-                        # increase tmp review span
-                        # if increased tmp span is bigger than actual one. set tmp flag to False
-                        # new set up
                         review_span_tracker = 0
+                        # increase tmp review span, if new tmp span is >= actual - use and flag it
+                        review_span += 5
+                        if review_span >= self.strategy_review_span:
+                            review_span - self.strategy_review_span
+                            _is_tmp_review_span = False
                 else:
                     # enough days to use actual review span
-                    if (review_span_tracker < review_span):
-                        # no time for review. keep the old set up
-                        pass
-                    elif review_span_tracker == review_span:
-                        # perform review
-                        # new set up
+                    if review_span_tracker == review_span:
+                        # perform review and reset span tracker
+                        follow['_value'] = self._review_performance(
+                            strat_idx=self._get_learning_start_idx(result_idx),
+                            end_idx=result_idx+1
+                        )
                         review_span_tracker = 0
+                # set up signal. if no rule/position yet - go neutral
+                if not follow.get('_value', None):
+                    signal = 0
+                else:
+                    if follow['_type'] == 'rule':
+                        signal = self.rules_results[follow['_value']][result_idx]
+                    elif follow['_type'] == 'position':
+                        signal = follow['_value']
             initial_signal.append(signal)
             idx += 1
             review_span_tracker += 1
-            
         return initial_signal
 
     def _get_learning_start_idx(self, result_idx):
-        # take all previous results if not enough days to fully cover memory span
+        # if not enough days - take all previous results to fully cover memory span
         if result_idx < self.strategy_memory_span-1:
             return 0
         return result_idx - self.strategy_memory_span + 1
     
-    def _review_performance(self, metric=None, strat_idx=None, end_idx=None):
+    def _review_performance(self, strat_idx=None, end_idx=None):
+        """
+        Output depends on metric. If "voting" it returns position which should be taken. Otherwise it returns 
+        rule_id which should be followed.
+        """
         # need to adjust start/end idx here as they refers to results idx not (not idx within df)
         df_start_idx = strat_idx+self.max_lookback
-        df_end_idx = end_idx+self.max_lookback+1
-        # for each rule and appropriate indices: calculate and store performance metric
-        for rule in self.strategy_rules:
+        df_end_idx = end_idx+self.max_lookback
+        # for each rule and appropriate indices: calculate and store performance metric(s)
+        for rule_id in self.strategy_rules:
             # get given rules signals
-            rule_signals = np.array(self.rules_results[rule][strat_idx:end_idx+1])
-            # calculate performance metric agains signals
+            rule_signals = np.array(self.rules_results[rule_id][strat_idx:end_idx])
+            # calculate performance metric against signals
             if self.strategy_metric == 'daily_returns':
                 daily_returns = np.array(self.df['daily_returns__learning'][df_start_idx:df_end_idx])
                 metric = sum(daily_returns * rule_signals)
@@ -491,10 +504,40 @@ class SignalGenerator():
                 daily_log_returns = np.array(self.df['daily_log_returns__learning'][df_start_idx:df_end_idx])
                 metric = avg(daily_log_returns * rule_signals)
             elif self.strategy_metric == 'avg_log_returns_held_only':
-                pass
+                daily_log_returns = np.array(self.df['daily_log_returns__learning'][df_start_idx:df_end_idx])
+                daily_log_returns_from_positions = daily_log_returns * rule_signals
+                metric = avg(daily_log_returns_from_positions[daily_log_returns_from_positions != 0])
             elif self.strategy_metric == 'voting':
-                pass
-
-
-
-
+                metric = (
+                    sum(rule_signals == -1),
+                    sum(rule_signals == 0),
+                    sum(rule_signals == 1),
+                )
+            self.past_reviews[rule_id].append(metric)
+        # get current review results
+        review_idx = len(self.past_reviews[self.strategy_rules[0]]) - 1
+        cur_res = {
+            rule_id: metric_vals[review_idx] for rule_id, metric_vals in self.past_reviews.items()
+        }
+        # define best performing rule. if tie - use the one with better historical performance
+        if self.strategy_metric != 'voting':
+            cur_best_rule, cur_best_val = max([(k,v) for k,v in cur_res.items()], key=lambda x: x[1])
+            if list(cur_res.values()).count(cur_best_val) > 1:
+                # calculate historical performance
+                all_best_rules = [r for r, v in cur_res.items() if v == cur_best_val]
+                avg_metric_res = [
+                    (rule_id, avg(self.past_reviews[rule_id]))
+                    for rule_id in all_best_rules
+                ]
+                # overwrite best rule. in case historical average is the same for some rules - just choose
+                # first (that is achieved via "max" which choose first max value occured in list)
+                cur_best_rule = max(avg_metric_res, key=lambda x: x[1])[0]
+            return cur_best_rule
+        # in case of 'voting' - define most freqeunt position by counting results from all the rules signals
+        else:
+            positions_counts = {p: 0 for p in (-1,0,1)}
+            for rule_id in self.strategy_rules:
+                positions_counts[-1] += cur_res[rule_id][0]
+                positions_counts[0] += cur_res[rule_id][1]
+                positions_counts[1] += cur_res[rule_id][2]
+            return max([(p, cnt) for p, cnt in positions_counts.items()], key=lambda x: x[1])[0]

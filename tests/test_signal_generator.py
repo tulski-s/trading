@@ -210,7 +210,7 @@ def config_7():
         ],
         'strategy': {
             'type': 'fixed',
-            'strategy_rules': ['conv']
+            'strategy_rules': ['conv', 'simple_rule_2']
         }
     }
 
@@ -455,3 +455,28 @@ def test_generate_final_signal_with_both_constraints(pricing_df1, config_6):
         'exit_short': [0] + [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
     })
     assert(expected_results.to_dict() == test_final_results.to_dict())
+
+
+def test_review_performance_daily_returns(pricing_df3, config_7):
+    sg = SignalGenerator(df=pricing_df3, config=config_7)
+    sg._generate_initial_signal()
+    # need to set up some values which would be there if "learning" strategy in config
+    sg.past_reviews = {rule_id: [] for rule_id in sg.strategy_rules}
+    sg.strategy_metric = 'daily_returns'
+    sg.df.loc[:, 'daily_returns__learning'] = sg.df['close'].pct_change()
+    sg._review_performance(strat_idx=3, end_idx=8)
+    tolerance = 0.4 
+    expected_conv = 0.073809
+    expected_simple_rule_2 = -0.2
+    assert(sg.past_reviews['conv'][0] == pytest.approx(expected_conv, tolerance))
+    assert(sg.past_reviews['simple_rule_2'][0] == pytest.approx(expected_simple_rule_2, tolerance))
+
+
+# TODO(slaw): create new config and rules for rest
+def test_review_performance_avg_log_returns(pricing_df3, config_7):
+    sg = SignalGenerator(df=pricing_df3, config=config_7)
+    sg._generate_initial_signal()
+    pass
+
+# test _review_performance (4x - as for all performance metrics)
+# test _generate_initial_signal with learning strategy (2* (voting and other metric))

@@ -560,5 +560,30 @@ def test_review_performance_voting(pricing_df1, config_9):
         assert(sg.past_reviews['trend'][-1][idx] == expected_trend_metric[idx])
 
 
-# test also return output of review performance (not only metrics values)
+def test_review_performance_rule_output(pricing_df1, config_9):
+    config_9['strategy']['params']['performance_metric'] = 'daily_returns'
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+    expected_best_rule = 'weigthed_ma'
+    test_best_rule = sg._review_performance(strat_idx=6, end_idx=10)
+    assert(test_best_rule == expected_best_rule)
+
+
+def test_review_performance_position_tie_output(pricing_df1, config_9):
+    config_9['strategy']['params']['performance_metric'] = 'voting'
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+    test_position = sg._review_performance(strat_idx=7, end_idx=9)
+    expected_position = 0
+    assert(test_position == expected_position)
+
+
+def test_review_performance_position_output(pricing_df1, config_9):
+    config_9['strategy']['params']['performance_metric'] = 'voting'
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+    test_position = sg._review_performance(strat_idx=5, end_idx=9)
+    expected_position = -1
+    assert(test_position == expected_position)
+
 # test _generate_initial_signal with learning strategy (min 2 tests - voting and other metric)

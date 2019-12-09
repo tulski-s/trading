@@ -540,4 +540,10 @@ class SignalGenerator():
                 positions_counts[-1] += cur_res[rule_id][0]
                 positions_counts[0] += cur_res[rule_id][1]
                 positions_counts[1] += cur_res[rule_id][2]
-            return max([(p, cnt) for p, cnt in positions_counts.items()], key=lambda x: x[1])[0]
+            poll_results = max([(p, cnt) for p, cnt in positions_counts.items()], key=lambda x: x[1])
+            most_freq_position = poll_results[0]
+            majority_votes_cnt = poll_results[1]
+            if list(positions_counts.values()).count(majority_votes_cnt) > 1:
+                # if there is a tie in voting -> go neutral
+                return 0
+            return most_freq_position

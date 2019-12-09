@@ -397,7 +397,7 @@ class SignalGenerator():
         signal = 0
         # variables specific to learning strategy type
         if self.strategy_type == 'learning':
-            # performance_reviews = {}
+            _is_tmp_review_span = False
             if self.strategy_review_span > 10:
                 # to avoid too long periods at the begining of backfill, where one waits for enough data to 
                 # learn from. review_span will be dynamically increased over time
@@ -438,7 +438,7 @@ class SignalGenerator():
                     if signal in (-1, 1):
                         break
             elif self.strategy_type == 'learning':
-                if self.strategy_metric != 'voting':
+                if self.strategy_metric == 'voting':
                     follow = {'_type': 'position'}
                 else:
                     follow = {'_type': 'rule'}
@@ -502,11 +502,11 @@ class SignalGenerator():
                 metric = sum(daily_returns * rule_signals)
             elif self.strategy_metric == 'avg_log_returns':
                 daily_log_returns = np.array(self.df['daily_log_returns__learning'][df_start_idx:df_end_idx])
-                metric = avg(daily_log_returns * rule_signals)
+                metric = np.average(daily_log_returns * rule_signals)
             elif self.strategy_metric == 'avg_log_returns_held_only':
                 daily_log_returns = np.array(self.df['daily_log_returns__learning'][df_start_idx:df_end_idx])
                 daily_log_returns_from_positions = daily_log_returns * rule_signals
-                metric = avg(daily_log_returns_from_positions[daily_log_returns_from_positions != 0])
+                metric = np.average(daily_log_returns_from_positions[daily_log_returns_from_positions != 0])
             elif self.strategy_metric == 'voting':
                 metric = (
                     sum(rule_signals == -1),
@@ -526,7 +526,7 @@ class SignalGenerator():
                 # calculate historical performance
                 all_best_rules = [r for r, v in cur_res.items() if v == cur_best_val]
                 avg_metric_res = [
-                    (rule_id, avg(self.past_reviews[rule_id]))
+                    (rule_id, np.average(self.past_reviews[rule_id]))
                     for rule_id in all_best_rules
                 ]
                 # overwrite best rule. in case historical average is the same for some rules - just choose

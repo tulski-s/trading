@@ -11,7 +11,6 @@ from signal_generator import (
 )
 import rules
 
-
 def simple_rule1(arr):
     """ If average value in array < 0 then -1, else 1. if 0 then 0 """
     mean = arr.mean()
@@ -262,6 +261,40 @@ def config_8():
 
 
 @pytest.fixture()
+def config_9():
+    return {
+        'rules': [
+            {
+                'id': 'trend',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 2,
+                'params': {},
+                'func': rules.trend,
+            },
+            {
+                'id': 'weigthed_ma',
+                'type': 'simple',
+                'ts': 'close',
+                'lookback': 3,
+                'params': {'weigth_ma': True},
+                'func': rules.moving_average,
+            },
+        ],
+        'strategy': {
+            'type': 'learning',
+            'strategy_rules': ['trend', 'weigthed_ma'],
+            'params':{
+                'memory_span': 5,
+                'review_span': 4,
+                'performance_metric': 'avg_log_returns',
+                'price_label': 'close',
+            }
+        }
+    }
+
+
+@pytest.fixture()
 def pricing_df1():
     return pd.DataFrame({
         'close': [20,21,45,32,15,45,23,21,21,12,14,48,15],
@@ -465,18 +498,67 @@ def test_review_performance_daily_returns(pricing_df3, config_7):
     sg.strategy_metric = 'daily_returns'
     sg.df.loc[:, 'daily_returns__learning'] = sg.df['close'].pct_change()
     sg._review_performance(strat_idx=3, end_idx=8)
-    tolerance = 0.4 
     expected_conv = 0.073809
     expected_simple_rule_2 = -0.2
-    assert(sg.past_reviews['conv'][0] == pytest.approx(expected_conv, tolerance))
-    assert(sg.past_reviews['simple_rule_2'][0] == pytest.approx(expected_simple_rule_2, tolerance))
+    assert(sg.past_reviews['conv'][0] == pytest.approx(expected_conv, abs=1e-4))
+    assert(sg.past_reviews['simple_rule_2'][0] == pytest.approx(expected_simple_rule_2, abs=1e-4))
 
 
-# TODO(slaw): create new config and rules for rest
-def test_review_performance_avg_log_returns(pricing_df3, config_7):
-    sg = SignalGenerator(df=pricing_df3, config=config_7)
+def test_review_performance_avg_log_returns(pricing_df1, config_9):
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
     sg._generate_initial_signal()
-    pass
+    """
+    idx   close   daily log ret   trend  weigthed_ma   result_id
+    0      20             NaN       NaN      NaN          NaN
+    1      21      -16.955478       NaN      NaN          NaN
+    2      45      -17.193338       NaN      NaN          NaN
+    3      32      -41.534264       1         -1          0
+    4      15      -29.291950       -1        -1          1
+    5      45      -11.193338       1         -1          2
+    6      23      -41.864506       1         -1          3
+    7      21      -19.955478       -1        -1          4
+    8      21      -17.955478       -1        -1          5
+    9      12      -18.515093       -1        -1          6
+    10     14       -9.360943       -1        -1          7
+    11     48      -10.128799       1          1          8
+    12     15      -45.291950.      1.        -1          9
+    """
+    sg._review_performance(strat_idx=3, end_idx=6)
+    expected_trend_metric = (-41.864506+19.955478+17.955478)/3
+    expected_ma_metric = (41.864506+19.955478+17.955478)/3
+    assert(sg.past_reviews['trend'][-1] == pytest.approx(expected_trend_metric, abs=1e-4))
+    assert(sg.past_reviews['weigthed_ma'][-1] == pytest.approx(expected_ma_metric, abs=1e-4))
 
-# test _review_performance (4x - as for all performance metrics)
-# test _generate_initial_signal with learning strategy (2* (voting and other metric))
+
+def test_review_performance_avg_log_returns_with_neutral(pricing_df1, config_9):
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+    sg.rules_results['trend'][3] = 0
+    sg._review_performance(strat_idx=3, end_idx=6)
+    expected_trend_metric = (19.955478+17.955478)/3
+    assert(sg.past_reviews['trend'][-1] == pytest.approx(expected_trend_metric, abs=1e-4))
+
+
+def test_review_performance_avg_log_returns_held_only(pricing_df1, config_9):
+    config_9['strategy']['params']['performance_metric'] = 'avg_log_returns_held_only'
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+    sg.rules_results['trend'][3] = 0
+    sg._review_performance(strat_idx=3, end_idx=6)
+    expected_trend_metric = (19.955478+17.955478)/2
+    assert(sg.past_reviews['trend'][-1] == pytest.approx(expected_trend_metric, abs=1e-4))
+
+
+def test_review_performance_voting(pricing_df1, config_9):
+    config_9['strategy']['params']['performance_metric'] = 'voting'
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+    sg.rules_results['trend'][3] = 0
+    sg._review_performance(strat_idx=3, end_idx=6)
+    expected_trend_metric = (2, 1, 0)
+    for idx in range(3):
+        assert(sg.past_reviews['trend'][-1][idx] == expected_trend_metric[idx])
+
+
+# test also return output of review performance (not only metrics values)
+# test _generate_initial_signal with learning strategy (min 2 tests - voting and other metric)

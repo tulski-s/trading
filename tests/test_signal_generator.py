@@ -508,7 +508,7 @@ def test_review_performance_avg_log_returns(pricing_df1, config_9):
     sg = SignalGenerator(df=pricing_df1, config=config_9)
     sg._generate_initial_signal()
     """
-    idx   close   daily log ret   trend  weigthed_ma   result_id
+    idx   close   daily log ret   trend  weigthed_ma   result_idx
     0      20             NaN       NaN      NaN          NaN
     1      21      -16.955478       NaN      NaN          NaN
     2      45      -17.193338       NaN      NaN          NaN
@@ -586,4 +586,45 @@ def test_review_performance_position_output(pricing_df1, config_9):
     expected_position = -1
     assert(test_position == expected_position)
 
-# test _generate_initial_signal with learning strategy (min 2 tests - voting and other metric)
+
+def test_init_signal_learning_avg_log_returns(pricing_df1, config_9):
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+    expected_past_reviews = {
+        'trend': [pytest.approx(-16.3250395, abs=1e-4), pytest.approx(4.7844972, abs=1e-4)],
+        'weigthed_ma': [pytest.approx(30.9710145, abs=1e-4), pytest.approx(21.5302996, abs=1e-4)],
+    }
+    test_past_reviews = sg.past_reviews
+    assert(sg.past_reviews == expected_past_reviews)
+
+
+def test_init_signal_learning_avg_log_returns_long_review_period(pricing_df1, config_9):
+    config_9['strategy']['params']['memory_span'] = 40
+    config_9['strategy']['params']['review_span'] = 20
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    sg._generate_initial_signal()
+
+    """
+    review_span is > 10, so it should start with the tmp review_span = 5
+    after first review this review span will grow to review_span = 5 so there will not be more reviews in this test
+
+    start_idx, end_idx in function will be: 0:5 and it will take the same price data range to calculate metric
+
+    idx   close   daily log ret   trend  weigthed_ma   result_idx
+        ...     ...             ...     ...         ...       ...
+    3      32      -41.534264       1         -1          0
+    4      15      -29.291950       -1        -1          1
+    5      45      -11.193338       1         -1          2
+    6      23      -41.864506       1         -1          3
+    7      21      -19.955478       -1        -1          4
+        ...     ...             ...     ...         ...       ...
+    """
+
+
+"""
+miniumum tests for initial signal generation with learning strategy:
+OK - small review span (so no tmp used), not 'voting' metric, check metric count and values
+IN PROGRESS- bigger review span (so tmp span is used), not 'voting' metric, check metric count and values
+- small review span, check initially generated signal (if it follows correct rule)
+- small review span, 'voting' metric, check if holds correct position
+"""

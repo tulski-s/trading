@@ -55,7 +55,7 @@ class SignalGenerator():
             self.df.loc[:, 'daily_log_returns__learning'] = (
                 np.log(df[self.strategy_price_label]) - df['prev_price__learning']
             )
-
+        self.init_review_span_tracker = 0
         self.max_lookback = 0
         self.rules_idxs = {}
         for idx, rule in enumerate(config['rules']):
@@ -405,7 +405,7 @@ class SignalGenerator():
                 _is_tmp_review_span = True
             else:
                 review_span = self.strategy_review_span
-        review_span_tracker = 0
+        review_span_tracker = self.init_review_span_tracker
         while idx < self.index:
             result_idx = idx-self.max_lookback
             # get and append results from simple rules
@@ -448,23 +448,25 @@ class SignalGenerator():
                         # perform review and reset span tracker
                         follow['_value'] = self._review_performance(
                             strat_idx=self._get_learning_start_idx(result_idx),
-                            end_idx=result_idx+1
+                            end_idx=result_idx
                         )
-                        review_span_tracker = 0
+                        review_span_tracker = self.init_review_span_tracker
                         # increase tmp review span, if new tmp span is >= actual - use and flag it
                         review_span += 5
                         if review_span >= self.strategy_review_span:
-                            review_span - self.strategy_review_span
+                            review_span = self.strategy_review_span
                             _is_tmp_review_span = False
                 else:
                     # enough days to use actual review span
                     if review_span_tracker == review_span:
+                        t1 = self._get_learning_start_idx(result_idx)
+                        t2 = result_idx
                         # perform review and reset span tracker
                         follow['_value'] = self._review_performance(
                             strat_idx=self._get_learning_start_idx(result_idx),
-                            end_idx=result_idx+1
+                            end_idx=result_idx
                         )
-                        review_span_tracker = 0
+                        review_span_tracker = self.init_review_span_tracker
                 # set up signal. if no rule/position yet - go neutral
                 if not follow.get('_value', None):
                     signal = 0
@@ -480,9 +482,9 @@ class SignalGenerator():
 
     def _get_learning_start_idx(self, result_idx):
         # if not enough days - take all previous results to fully cover memory span
-        if result_idx < self.strategy_memory_span-1:
+        if result_idx <= self.strategy_memory_span-1:
             return 0
-        return result_idx - self.strategy_memory_span + 1
+        return result_idx - self.strategy_memory_span
     
     def _review_performance(self, strat_idx=None, end_idx=None):
         """

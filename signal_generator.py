@@ -397,6 +397,10 @@ class SignalGenerator():
         signal = 0
         # variables specific to learning strategy type
         if self.strategy_type == 'learning':
+            if self.strategy_metric == 'voting':
+                follow = {'_type': 'position'}
+            else:
+                follow = {'_type': 'rule'}
             _is_tmp_review_span = False
             if self.strategy_review_span > 10:
                 # to avoid too long periods at the begining of backfill, where one waits for enough data to 
@@ -438,17 +442,14 @@ class SignalGenerator():
                     if signal in (-1, 1):
                         break
             elif self.strategy_type == 'learning':
-                if self.strategy_metric == 'voting':
-                    follow = {'_type': 'position'}
-                else:
-                    follow = {'_type': 'rule'}
+                review_span_tracker += 1
                 if _is_tmp_review_span:
                     # dynamic review span at the begining of the backfill
                     if review_span_tracker == review_span:
-                        # perform review and reset span tracker
+                        # perform review and reset span tracker. +1 to make current result inclusive
                         follow['_value'] = self._review_performance(
-                            strat_idx=self._get_learning_start_idx(result_idx),
-                            end_idx=result_idx
+                            strat_idx=self._get_learning_start_idx(result_idx+1),
+                            end_idx=result_idx+1
                         )
                         review_span_tracker = self.init_review_span_tracker
                         # increase tmp review span, if new tmp span is >= actual - use and flag it
@@ -459,12 +460,10 @@ class SignalGenerator():
                 else:
                     # enough days to use actual review span
                     if review_span_tracker == review_span:
-                        t1 = self._get_learning_start_idx(result_idx)
-                        t2 = result_idx
-                        # perform review and reset span tracker
+                        # perform review and reset span tracker. +1 to make current result inclusive
                         follow['_value'] = self._review_performance(
-                            strat_idx=self._get_learning_start_idx(result_idx),
-                            end_idx=result_idx
+                            strat_idx=self._get_learning_start_idx(result_idx+1),
+                            end_idx=result_idx+1
                         )
                         review_span_tracker = self.init_review_span_tracker
                 # set up signal. if no rule/position yet - go neutral
@@ -477,7 +476,6 @@ class SignalGenerator():
                         signal = follow['_value']
             initial_signal.append(signal)
             idx += 1
-            review_span_tracker += 1
         return initial_signal
 
     def _get_learning_start_idx(self, result_idx):

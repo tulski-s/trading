@@ -617,10 +617,12 @@ def test_init_signal_learning_avg_log_returns_long_review_period(pricing_df1, co
     assert(sg.past_reviews == expected_past_reviews)
 
 
-"""
-miniumum tests for initial signal generation with learning strategy:
-OK - small review span (so no tmp used), not 'voting' metric, check metric count and values
-OK - small review span, check initially generated signal (if it follows correct rule)
-OK - bigger review span (so tmp span is used), not 'voting' metric, check metric count and values
-- bigger review span, 'voting' metric, check if holds correct position
-"""
+def test_init_signal_learning_voting_position_following(pricing_df1, config_9):
+    config_9['strategy']['params']['performance_metric'] = 'voting'
+    config_9['strategy']['params']['memory_span'] = 40
+    config_9['strategy']['params']['review_span'] = 20
+    sg = SignalGenerator(df=pricing_df1, config=config_9)
+    test_initial_signal = sg._generate_initial_signal()
+    expected_initial_signal = [0, 0, 0, 0, -1, -1, -1, -1, -1, -1]
+    assert(test_initial_signal == expected_initial_signal)
+

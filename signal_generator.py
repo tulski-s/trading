@@ -409,7 +409,7 @@ class SignalGenerator():
                 _is_tmp_review_span = True
             else:
                 review_span = self.strategy_review_span
-        review_span_tracker = self.init_review_span_tracker
+            review_span_tracker = self.init_review_span_tracker
         while idx < self.index:
             result_idx = idx-self.max_lookback
             # get and append results from simple rules

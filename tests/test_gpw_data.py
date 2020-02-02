@@ -43,6 +43,7 @@ def test_splitting_into_subsets_df(mock_dates_df):
     assert((test_data['TEST_SIGS_2'].index == expected_test_sigs2).all() == True)
     assert((validation_data['TEST_SIGS_2'].index == expected_validation_sigs2).all() == True)
 
+
 def test_splitting_into_subsets_dict(mock_dates_dict):
     universe = GPWData()
     test_data, validation_data = universe.split_into_subsets(mock_dates_dict, 0.5, df=False)
@@ -57,3 +58,22 @@ def test_splitting_into_subsets_dict(mock_dates_dict):
     assert(test_data == expected_test_data)
     assert(validation_data == expected_validation_data)
 
+
+def test_detrend_df():
+    gpw_data = GPWData()
+    df = gpw_data.load(symbols='CCC')
+    df = gpw_data.detrend(df)
+    df.loc[:, 'adj_diff'] = df['adj_open'] - df['adj_open'].shift(1)
+    assert pytest.approx(df['adj_diff'].mean()) == 0
+
+
+def test_detrend_list():
+    gpw_data = GPWData()
+    data = gpw_data.load(symbols='CCC', df=False)
+    data = gpw_data.detrend(data)
+    close_col_idx = 9
+    adj_price_changes = [
+        data[i][close_col_idx] - data[i-1][close_col_idx] for i in range(1, len(data))
+    ]
+    mean_change = sum(adj_price_changes)/len(adj_price_changes)
+    assert pytest.approx(mean_change) == 0

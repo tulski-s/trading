@@ -53,7 +53,8 @@ class GPWData():
 
         If *from_csv* is True it reads data from csv, else it gets it from the web. Currently it takes
         full history until execution.
-        Ouput is pandas DataFrame or list of lists with ['date','open','high','low','close','volume']
+
+        Output is pandas DataFrame or list of lists with ['date','open','high','low','close','volume']
         if only 1 symbol is provided. If more symbols requested then the output will be a dictionary with 
         symbol as a key and data with the same format as the one for single symbol.
         """
@@ -88,6 +89,48 @@ class GPWData():
             return pricing_data[symbol]
         else:
             return pricing_data
+
+    def detrend(self, data):
+        """
+        De-trends data (makes average daily price change is equal to zero). 
+        Function returns df or list (depends on input type) with new adjusted prices.
+        If list, order is as follow: 
+        ['date','open','high','low','close','volume','adj_open','adj_high','adj_low','adj_close']
+        """
+        if isinstance(data, pd.core.frame.DataFrame):
+            df = data.copy()
+            for column in self.column_names:
+                if column in ('date', 'volume'):
+                    continue
+                # get average daily change
+                df.loc[:, f'{column}_change'] = df[column] - df[column].shift(1)
+                avg_change = df[f'{column}_change'].mean()
+                df.loc[:, f'{column}_change_adj'] = df[f'{column}_change'] - avg_change
+                # create new adjusted prices timeseries
+                df.fillna(value={f'{column}_change_adj':0}, inplace=True)
+                df.loc[:, f'{column}_adj_ch_cumsum'] = df[f'{column}_change_adj'].cumsum()
+                df.loc[:, f'adj_{column}'] = df.iloc[0][column] + df[f'{column}_adj_ch_cumsum']
+                # clean helper columns
+                df.drop(f'{column}_change', axis=1, inplace=True)
+                df.drop(f'{column}_change_adj', axis=1, inplace=True)
+                df.drop(f'{column}_adj_ch_cumsum', axis=1, inplace=True)
+            return df
+        elif isinstance(data, list):
+            # where col refers to 'open','high','low','close' columns
+            new_cols = {}
+            for col in range(1,5):
+                col_daily_changes = [data[i+1][col] - data[i][col] for i in range(len(data)-1)]
+                avg_change = sum(col_daily_changes)/len(col_daily_changes)
+                adj_daily_changes = [x-avg_change for x in col_daily_changes]
+                new_prices = [data[0][col]]
+                for i in range(len(data)-1):
+                    new_prices.append(new_prices[i] + adj_daily_changes[i])
+                new_cols[col] = new_prices
+            new_data = []
+            for idx, row in enumerate(data):
+                adj_prices = [new_cols[col][idx] for col in range(1,5)]
+                new_data.append(row + adj_prices)
+            return new_data
 
     def split_into_subsets(self, pricing_data, ratio, df=True):
         """
@@ -147,17 +190,8 @@ class GPWData():
         return os.path.join(self.pricing_data_path, '{}_pricing.csv'.format(symbol))
 
 
-
 def main():
-    gpw_data = GPWData()
-    # gpw_data.download_data_to_csv(symbols=wig20_symbols)
-    # data = gpw_data.load(index='WIG20')
-    # data = gpw_data.load(symbols=['SANPL', 'ALIOR'])
-    #print(data)
-
-    # etfs_symbols = list(PriceCollector().get_etfs_symbols().keys())
-    gpw_data.download_data_to_csv(symbols=gpw_data.indicies_stocks['mWIG40'])
-
+    pass
 
 
 if __name__ == '__main__':

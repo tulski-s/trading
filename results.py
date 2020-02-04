@@ -9,6 +9,17 @@ import pandas as pd
 import scipy.stats as stats
 
 
+def get_daily_returns(results_df):
+    """
+    Calculates daily returns given nav (net account value). Note:
+    To find the return 𝑅(𝑡1,𝑡2) between dates 𝑡1 and 𝑡2 one takes 𝑅(𝑡1,𝑡2)=𝑁𝐴𝑉(𝑡2)/𝑁𝐴𝑉(𝑡1)−1
+    """
+    df = results_df.copy()
+    df.loc[:, 'prev_day_nav'] = df['nav'].shift(1)
+    df.loc[:, 'daily_returns'] = df['nav']/df['prev_day_nav']-1
+    return df['daily_returns']
+
+
 def evaluate(results_df, trades):
     """
     Input: results dataframe from backtester run
@@ -25,9 +36,8 @@ def evaluate(results_df, trades):
     """
     df = results_df.copy()
 
-    # Daily Returns - To find the return 𝑅(𝑡1,𝑡2) between dates 𝑡1 and 𝑡2 one takes 𝑅(𝑡1,𝑡2)=𝑁𝐴𝑉(𝑡2)/𝑁𝐴𝑉(𝑡1)−1
-    df.loc[:, 'prev_day_nav'] = df['nav'].shift(1)
-    df.loc[:, 'daily_returns'] = df['nav']/df['prev_day_nav']-1
+    # Daily Returns
+    df.loc[:, 'daily_returns'] = get_daily_returns(df)
 
     # Annualized Sharpe Ratio
     risk_free_rate = 0.02

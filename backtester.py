@@ -130,7 +130,7 @@ class Backtester():
         self._account_value = {}
         self._net_account_value = {}
         self._rate_of_return = {}
-        self._backup_close_prices = {}
+        self._backup_prices = {}
 
     def _sell(self, symbol, prices, ds, exit_type):
         """Selling procedure"""
@@ -232,10 +232,10 @@ class Backtester():
         for symbol, vals in self._owned_shares.items():
             try:
                 price = self.signals[symbol][self.price_label][ds]
-                self._backup_close_prices[symbol] = (price, ds)
+                self._backup_prices[symbol] = (price, ds)
             except KeyError:
                 # in case of missing ds in symbol take previous price value
-                price, price_ds = self._backup_close_prices[symbol]
+                price, price_ds = self._backup_prices[symbol]
                 if print_err_msg == False:
                     self.log.warning(
                         '\t\t!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(

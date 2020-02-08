@@ -12,12 +12,7 @@ import rules
 import signal_generator
 
 
-def wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_samples=5000):
-    """
-    Creates sampling distribution for White's Reality Check (bootrap method for many trading rules to avoid data-mining bias)
-    Input: dict with rule_names and DataFrame with daily returns column present
-    """
-    lengths = [df.shape[0] for df in rules_results.values()]
+def same_lengths_assertion(lengths):
     try:
         assert(len(set(lengths)) == 1)
     except AssertionError:
@@ -27,11 +22,31 @@ def wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_samples=5
             the same dates (number of daily returns). Results legnts: {}
             """.format(lengths)
         )
+
+
+def pval_msg(pval):
+    if pval <= 0.001:
+        print('Result is highly significant')
+    elif pval <= 0.01:
+        print('Result is very significant')    
+    elif pval <= 0.05:
+        print(f'Result is statistically significant')
+    else:
+        print(f'Rule has no predictive power')
+
+
+def create_wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_samples=5000):
+    """
+    Creates sampling distribution for White's Reality Check (bootrap method for many trading rules to avoid data-mining bias)
+    Input: dict with rule_names and DataFrame with daily returns column present
+    """
+    lengths = [df.shape[0] for df in rules_results.values()]
+    same_lengths_assertion(lengths)
     for df in rules_results.values():
         # shift daily returns so that each rule avg. return is equal to 0
         mean_ret = df[daily_ret_col].mean()
         df.loc[:, 'shifted_daily_returns'] = df[daily_ret_col] - mean_ret
-        df.fillna(value={f'shifted_daily_returns':0}, inplace=True)
+        df.fillna(value={'shifted_daily_returns':0}, inplace=True)
     sample_size = lengths[0]
     max_avg_rets = []
     for k in range(no_samples):
@@ -41,6 +56,42 @@ def wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_samples=5
         for df in rules_results.values():
             avg_rets.append(
                 df['shifted_daily_returns'].iloc[random_idxs].mean()
+            )
+        max_avg_rets.append(max(avg_rets))
+    return max_avg_rets
+
+
+def create_mc_sampling_distr(rules_results, states_col='position_states', price_col='actual_price_change', no_samples=5000):
+    """
+    Creates sampling distribution for the Monte Carlo method. This sampling distribution represent expected return of
+    useless (random) rule. In high level it is done via random assignment of rule's values to market returns.
+    MC's NULL hypothesis is simply that all rules tested have output values that are randomly correlated with future
+    marrket behaviour.
+
+    Input: dict with rule_names and DataFrame with actual price change and rules states columns present
+
+    Method:
+    - obtian daily rule output states (-1,1 or -1,0,1)
+    - rule outputs are paired with random day market returns. pairing should be consist across all the rules. that is,
+      if (o1, m15), that is output from day 1 is paired with market return from day 15, this pairing should be same for
+      all rules
+    - determine mean rate of return for each rule (avg daily returns)
+    - select highest mean return as entry for sampling distribution
+    """
+    lengths = [df.shape[0] for df in rules_results.values()]
+    same_lengths_assertion(lengths)
+    # actual price changes will be the same for all rules, so just take any
+    changes_org = rules_results[list(rules_results.keys())[0]][price_col].tolist()
+    max_avg_rets = []
+    for k in range(no_samples):
+        changes = changes_org.copy()
+        random.shuffle(changes)
+        avg_rets = []
+        for df in rules_results.values():
+            states = df[states_col].tolist()
+            returns = [x*y for x, y in zip(states, changes)]
+            avg_rets.append(
+                sum(returns)/len(returns)
             )
         max_avg_rets.append(max(avg_rets))
     return max_avg_rets
@@ -102,6 +153,7 @@ def main():
     rules_configs = zip(('r1', 'r2', 'r3'), (config_r1, config_r2, config_r3))
 
     # generate signals
+    print('generating signals')
     data_collector = gpw_data.GPWData()
     symbol = 'CCC'
     symbol_data = data_collector.load(symbols=symbol, from_csv=True, df=True)
@@ -113,9 +165,9 @@ def main():
             config = rc[1],
         )
         rules_signals[rc[0]] = sg.generate()
-    print(rules_signals)
 
     # backtest data
+    print('backtesting data')
     rules_results = {}
     position_sizer = position_size.FixedCapitalPerc(capital_perc=0.1)
     for rs_name, rs_signal in rules_signals.items():
@@ -126,17 +178,12 @@ def main():
         )
         tester_results, tester_trades = tester.run()
         tester_results.loc[:, 'daily_returns'] = results.get_daily_returns(tester_results)
+        tester_results.loc[:, 'actual_price_change'] = results.get_price_change(rs_signal)
+        tester_results.loc[:, 'position_states'] = sg.triggers_to_states(rs_signal)
         rules_results[rs_name] = tester_results
-    print(rules_results)
-
-    # create sampling distribution
-    print('Creating sampling distribution')
-    sampling_dist = wrc_sampling_dist(rules_results)
-    print('This is part of sampling distr: ', sampling_dist[:10])
 
     avg_daily_returns = {r: df['daily_returns'].mean() for r, df in rules_results.items()}
     print('those are avg daily returns for all the tested rules: ', avg_daily_returns)
-
     highest_daily_ret = max(avg_daily_returns.values())
     for rule, ret in avg_daily_returns.items():
         # note: if multiple rules have same highest return, first one encountered will be chosen
@@ -144,18 +191,24 @@ def main():
             best_rule = rule
     print(f'Best rule is "{rule}" with avg. daily ret equal to {highest_daily_ret}')
 
+    # White's Reality Check
+    print("     #### White's Reality Check")
+    # create sampling distribution (small amount of samples just to make it faster)
+    wrc_sampling_dist = create_wrc_sampling_dist(rules_results, no_samples=500)
     # find p-val and asses statistical significancee
-    exceeds_observed = [x for x in sampling_dist if x > highest_daily_ret]
-    pval = len(exceeds_observed)/len(sampling_dist)
-    print(f'p-val is {pval}')
-    if pval <= 0.001:
-        print(f'Result for the best rule ({best_rule}) is highly significant')
-    elif pval <= 0.01:
-        print(f'Result for the best rule ({best_rule}) is very significant')    
-    elif pval <= 0.05:
-        print(f'Result for the best rule ({best_rule}) is statistically significant')
-    else:
-        print(f'Best rule ({best_rule}) has no predictive power. It is highly possible that best rule average returns are 0')
+    wrc_exceeds_observed = [x for x in wrc_sampling_dist if x >= highest_daily_ret]
+    wrc_pval = len(wrc_exceeds_observed)/len(wrc_sampling_dist)
+    print(f'p-val for WRC is {wrc_pval}')
+    pval_msg(wrc_pval)
+
+    # Monte Carlo simulation
+    print("     #### Monte Carlo simulation")
+    # create sampling distr for Monte Carlo. again just small sample size to make it faster
+    mc_sampling_dist = create_mc_sampling_distr(rules_results, no_samples=500)
+    mc_exceeds_observed = [x for x in mc_sampling_dist if x >= highest_daily_ret]
+    mc_pval = len(mc_exceeds_observed)/len(mc_sampling_dist)
+    print(f'p-val for MC is {mc_pval}')
+    pval_msg(mc_pval)
 
 
 if __name__ == '__main__':

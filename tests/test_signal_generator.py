@@ -626,3 +626,18 @@ def test_init_signal_learning_voting_position_following(pricing_df1, config_9):
     expected_initial_signal = [0, 0, 0, 0, -1, -1, -1, -1, -1, -1]
     assert(test_initial_signal == expected_initial_signal)
 
+
+def test_triggers_to_states_1(pricing_df1, config_1):
+    mock_rule_triggers = {
+        'entry_long':  [0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0],
+        'exit_long':   [0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
+        'entry_short': [0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0],
+        'exit_short':  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
+    }
+    df = pd.DataFrame(mock_rule_triggers)
+    # real df with data and config does not matter here
+    sg = SignalGenerator(df=pricing_df1, config=config_1)
+    test_states = sg.triggers_to_states(df)
+    expected_states = [0, 0, 1, -1, 1, 1, 1, 0, 0, -1, -1]
+    assert(test_states == expected_states)
+

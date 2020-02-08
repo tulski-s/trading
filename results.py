@@ -20,6 +20,14 @@ def get_daily_returns(results_df):
     return df['daily_returns']
 
 
+def get_price_change(results_df, price_label='close'):
+    df = results_df.copy()
+    df.loc[:, 'prev_price'] = df[price_label].shift(1)
+    df.loc[:, 'price_change'] = df[price_label] - df['prev_price']
+    df.fillna(value={'price_change':0}, inplace=True)
+    return df['price_change']
+
+
 def evaluate(results_df, trades):
     """
     Input: results dataframe from backtester run

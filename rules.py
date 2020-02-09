@@ -99,7 +99,7 @@ def moving_average(arr, weigth_ma=None, quick_ma_lookback=None, b=None):
     As threshold - slow MA is used. `b` parameters applies in the same way as in base version.
 
     Note: This rule is binary, but if used as convoluted rule along with trend simple rule - one can 
-    generate also natural (0) positions.
+    generate also neutral (0) positions.
     """
     ma_type = 'simple' if weigth_ma == None else 'weighted'
     mean = lambda a: _simple_average(a) if ma_type=='simple' else _weigted_average(a)
@@ -116,3 +116,41 @@ def moving_average(arr, weigth_ma=None, quick_ma_lookback=None, b=None):
         return 1
     else:
         return -1
+
+
+def channel_break_out(dict_arrs, channel_width=None, b=False, high='high', low='low', base='close'):
+    """
+    Buy when the price exceeds the channel, and to sell when the price moves below the channel.
+    A channel can be said to occur when the high over the previous n days is within x percent of the low over
+    the previous n days, not including the current price.
+
+    *channel_width* is allowed % diff between high and low. should be expressed e.g. as 0.2 for 20%
+    *b* is the fixed percentage filter. if set, price has to be above/below channel by that fixed 
+    multiplicative amount
+
+    Notes, this rule requires 3 arrays, two (e.g. high and low) to create a channel and one to define if
+    channel was exeeced. Rule is state-based, so when used type "convoluted" and aggregation_type "state-based" 
+    should be used. Also, if used alone its rather binary, that is after it enters it will be either 1, -1.
+    It can be used along with other rules to extend it and create also neutral state.
+    """
+    channel_tops = dict_arrs[high][:-1]
+    channel_bottoms = dict_arrs[low][:-1]
+    perc_diffs = abs(channel_tops-channel_bottoms) / ((channel_tops+channel_bottoms)/2)
+    is_channel = all(perc_diffs <= channel_width)
+    if is_channel:
+        price = dict_arrs[base][-1]
+        if not b:
+            if price > channel_tops.mean():
+                return 1
+            elif price < channel_bottoms.mean():
+                return -1
+        top_mean = channel_tops.mean()
+        bottom_mean = channel_bottoms.mean()
+        th_top = top_mean + (top_mean * b)
+        th_bottom = bottom_mean - (bottom_mean*bottom_mean)
+        if price > th_top:
+            return 1
+        elif price < th_bottom:
+            return -1
+    return 0
+

@@ -20,6 +20,17 @@ def prices_local_sr():
     )
 
 
+@pytest.fixture()
+def prices_multp_1():
+    # high = low + (low*0.2)
+    # last datapoint not included for means
+    # high_mean, low_mean  =  154.0, 128.(3)
+    return {
+        'high': np.array([147.6, 160.8, 153.6, 200]),
+        'low': np.array([123, 134, 128, 100]),
+        'close': np.array([131, 160, 132, 120]),
+    }
+
 def test_uptrend():
     arr = np.array([1,2,3,4,5,6])
     rule_output = rules.trend(arr)
@@ -127,3 +138,24 @@ def test_weighted_two_mas_pos(prices_global_sr):
     rule_output = rules.moving_average(prices_global_sr, weigth_ma=True, quick_ma_lookback=2)
     assert(rule_output == 1)
 
+
+def test_channel_break_out_1(prices_multp_1):
+    rule_output = rules.channel_break_out(prices_multp_1, channel_width=0.2)
+    assert(rule_output == -1)
+
+
+def test_channel_break_out_2(prices_multp_1):
+    prices_multp_1['close'][-1] = 160
+    rule_output = rules.channel_break_out(prices_multp_1, channel_width=0.2)
+    assert(rule_output == 1)
+
+
+def test_channel_break_out_3(prices_multp_1):
+    prices_multp_1['close'][-1] = 132
+    rule_output = rules.channel_break_out(prices_multp_1, channel_width=0.2)
+    assert(rule_output == 0)
+
+
+def test_channel_break_out_4(prices_multp_1):
+    rule_output = rules.channel_break_out(prices_multp_1, channel_width=0.2, b=0.1)
+    assert(rule_output == 0)

@@ -21,6 +21,18 @@ def simple_rule1(arr):
     return 0
 
 
+def mock_multiple_ts_rule(dict_arr):
+    fv = 0
+    for v in dict_arr.values():
+        fv += v
+    if fv < 0:
+        return -1
+    elif fv == 0:
+        return 0
+    elif fv > 0:
+        return 1
+
+
 def simple_rule2(arr):
     d = {
         0: 0, 1:0, 2:1, 3:0, 4:0, 5:0, 6:-1, 7:0, 8:0, 9:0, 10:1, 11:-1, 12:0, 13:0
@@ -290,6 +302,26 @@ def config_9():
                 'performance_metric': 'avg_log_returns',
                 'price_label': 'close',
             }
+        }
+    }
+
+
+@pytest.fixture()
+def config_10():
+    return {
+        'rules': [
+            {
+                'id': 'trend',
+                'type': 'simple',
+                'ts': ['high', 'low', 'close'],
+                'lookback': 0,
+                'params': {},
+                'func': mock_multiple_ts_rule,
+            }
+        ],
+        'strategy': {
+            'type': 'fixed',
+            'strategy_rules': ['trend']
         }
     }
 
@@ -640,4 +672,18 @@ def test_triggers_to_states_1(pricing_df1, config_1):
     test_states = sg.triggers_to_states(df)
     expected_states = [0, 0, 1, -1, 1, 1, 1, 0, 0, -1, -1]
     assert(test_states == expected_states)
+
+
+def test_multiple_ts_in_simple_rule_1(config_10):
+    df = pd.DataFrame({
+        'close': [1, 1, 1, 1, 1],
+        'high': [2, 2, 2, 2, 2],
+        'low': [-3, -2, 0, -4, -2]
+    })
+    sg = SignalGenerator(df=df, config=config_10)
+    test_results = sg.generate()
+    test_signals = sg.triggers_to_states(test_results)
+    expected_signals = [0, 1, 1, -1, 1]
+    assert(test_signals == expected_signals)
+
 

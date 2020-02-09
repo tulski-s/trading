@@ -67,8 +67,15 @@ class SignalGenerator():
             if rule['type'] == 'simple':
                 self.simple_rules.append(rule)
                 # store every rule timeseries as array and make sure all number of rows is equal
-                self.data[rule['ts']] = df[rule['ts']].to_numpy()
-                assert(self.data[rule['ts']].shape[0] == self.index)
+                if isinstance(rule['ts'], str):
+                    if rule['ts'] not in self.data:
+                        self.data[rule['ts']] = df[rule['ts']].to_numpy()
+                        assert(self.data[rule['ts']].shape[0] == self.index)
+                elif isinstance(rule['ts'], list):
+                    for ts in rule['ts']:
+                        if ts not in self.data:
+                            self.data[ts] = df[ts].to_numpy()
+                            assert(self.data[ts].shape[0] == self.index)
                 # check max lookback. in 'generate' it will be starting point so all data is present
                 if self.max_lookback < rule['lookback']:
                     self.max_lookback = rule['lookback']
@@ -386,13 +393,20 @@ class SignalGenerator():
         else:
             raise NotImplementedError('aggregation_type "{}" is not supported'.format(aggregation_type))
 
-
     def _get_ts(self, ts_name, idx, lookback):
         """
         Returns portion of timeseries used as rule input. If lookback is 6, then resulting array will have 7 elemements.
-        That is: "current" element (idx+1) and 6 days of loockback period. 
+        That is: "current" element (idx+1) and 6 days of loockback period.
+
+        If *ts_name* is list of names, result will be a dictionary with {ts_name1: array1, ... ts_nameN: arrayN}
         """
-        return self.data[ts_name][idx-lookback:idx+1]
+        if isinstance(ts_name, str):
+            return self.data[ts_name][idx-lookback:idx+1]
+        elif isinstance(ts_name, list):
+            return {
+                name: self.data[name][idx-lookback:idx+1]
+                for name in ts_name
+            }
 
     def _get_simple_rules_results(self, rules_ids, result_idx, as_dict=False, conv_rule_id=None):
         """

@@ -1,4 +1,5 @@
-
+# 3rd part
+import numpy as np
 
 def gather_entry_exist_signals_dates(df):
     """
@@ -53,5 +54,23 @@ def create_bollinger_bands(df_org, price_label='close', ma_type='simple', time_w
     df_no_nans = df[~df['ma_std'].isnull()]
     return df_no_nans
 
+
+def on_balance_volume_indicator(df_org, price_label='close', volume_label='volume'):
+    """
+    The on-balance volume (OBV) indicator is calculated by keeping a running total of the indicator each day and adding 
+    the entire amount of daily volume when the closing price increases, and subtracting the daily volume when the closing 
+    price decreases.
+
+    Returns original df with new 'obv' columns
+    """
+    df = df_org.copy()
+    df.loc[:, 'multiplier'] = np.where(
+        df[price_label] - df[price_label].shift(1) > 0, 1, -1
+    )
+    df.loc[:, 'volume_change'] = df[volume_label] * df['multiplier']
+    df.loc[:, 'obv'] = df['volume_change'].cumsum()
+    for col in ('multiplier', 'volume_change'):
+        df.drop(col, axis=1, inplace=True)
+    return df
 
     

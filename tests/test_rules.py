@@ -159,3 +159,22 @@ def test_channel_break_out_3(prices_multp_1):
 def test_channel_break_out_4(prices_multp_1):
     rule_output = rules.channel_break_out(prices_multp_1, channel_width=0.2, b=0.1)
     assert(rule_output == 0)
+
+
+def momentum_in_oscillator_cross_from_below():
+    arr = np.array([.1, .15, .25, .1, .25])
+    rule_output = rules.momentum_in_oscillator(arr, threshold=0.2)
+    assert(rule_output == 1)
+
+
+def momentum_in_oscillator_cross_from_above():
+    arr = np.array([.1, .15, .25, .1, .05])
+    rule_output = rules.momentum_in_oscillator(arr, threshold=0.1)
+    assert(rule_output == -1)
+
+
+def momentum_in_oscillator_close_cross_but_no():
+    arr = np.array([.2, .1, .2, .1, .25])
+    rule_output = rules.momentum_in_oscillator(arr, threshold=0.15)
+    assert(rule_output == 0)
+

@@ -73,4 +73,14 @@ def on_balance_volume_indicator(df_org, price_label='close', volume_label='volum
         df.drop(col, axis=1, inplace=True)
     return df
 
-    
+
+def roc_oscillator(df_org, days=None, col=None):
+    """
+    Simple m-day ROC (Rate Of Change) oscillator. Where the m-day ROC at time t is:
+    (qt − qt_minus_m)/qt_minus_m, where qt is the value of `col` (e.g. price pr volume) at time t.
+    """
+    df = df_org.copy()
+    df.loc[:, 'mday_ago'] = df[col].shift(days)
+    df.loc[:, 'roc'] = (df['close'] - df['mday_ago']) / df['mday_ago']
+    return df['roc']
+

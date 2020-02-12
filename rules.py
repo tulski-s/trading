@@ -120,18 +120,18 @@ def moving_average(arr, weigth_ma=None, quick_ma_lookback=None, b=None):
 
 def channel_break_out(dict_arrs, channel_width=None, b=False, high='high', low='low', base='close'):
     """
-    Buy when the price exceeds the channel, and to sell when the price moves below the channel.
-    A channel can be said to occur when the high over the previous n days is within x percent of the low over
-    the previous n days, not including the current price.
+    Buy signal is triggered when the price exceeds the channel, and to sell signal when the price moves below 
+    the channel. A channel can be said to occur when the high over the previous n days is within x percent of 
+    the low over the previous n days, not including the current price.
 
     *channel_width* is allowed % diff between high and low. should be expressed e.g. as 0.2 for 20%
     *b* is the fixed percentage filter. if set, price has to be above/below channel by that fixed 
     multiplicative amount
 
-    Notes, this rule requires 3 arrays, two (e.g. high and low) to create a channel and one to define if
-    channel was exeeced. Rule is state-based, so when used type "convoluted" and aggregation_type "state-based" 
-    should be used. Also, if used alone its rather binary, that is after it enters it will be either 1, -1.
-    It can be used along with other rules to extend it and create also neutral state.
+    Notes, this rule requires 3 arrays, two (e.g. high and low) to create a channel and one to define if the 
+    channel was crossed. The rule is state-based, so when it is used - type "convoluted" and aggregation_type 
+    "state-based" should be set. Also, if used alone it is rather binary, meaning after it enters it will be 
+    either 1, -1. It can be used along with other rules to extend it and create also a neutral state.
     """
     channel_tops = dict_arrs[high][:-1]
     channel_bottoms = dict_arrs[low][:-1]
@@ -153,4 +153,28 @@ def channel_break_out(dict_arrs, channel_width=None, b=False, high='high', low='
         elif price < th_bottom:
             return -1
     return 0
+
+
+def momentum_in_oscillator(arr, threshold=None):
+    """
+    Usually, arr will contain “oscillator” data, not raw prices. The oscillator can be constructed from various 
+    momentum measures. For example the rate of change (ROC) in price or volume in a given period. In general, 
+    the oscillator used should be in percentages and then `threshold` will be the level which triggers signal 
+    if crossed from below (buy) or above (sell). The reasoning behind it is that if the oscillator speeds up 
+    or slows down it will continue to raise/lower the price in the near future.
+
+    The rule is state-based, so when it is used - type "convoluted" and aggregation_type "state-based" should 
+    be set. It is probably useful to use it with "hold_for_x_days" constraint as the rule itself just 
+    triggers 1/-1 after crossing the threshold.
+
+    To define if a recent price crossed the threshold from below/above - three values are used. Previous value, 
+    current value, and threshold. The current value is just the last oscillator value in the arr. The previous 
+    value is the average of the rest of the earlier prices. 
+    """
+    cur_val = arr[-1]
+    prev_val = arr[:-1].mean()
+    if (prev_val < threshold) and (cur_val > threshold):
+        return 1
+    elif (prev_val > threshold) and (cur_val < threshold):
+        return -1
 

@@ -687,3 +687,11 @@ def test_multiple_ts_in_simple_rule_1(config_10):
     assert(test_signals == expected_signals)
 
 
+def test_hold_x_days_on_rule_lvl2(pricing_df2, config_2):
+    config_2['rules'][0]['hold_fixed_days'] = 3
+    sg = SignalGenerator(df=pricing_df2, config=config_2)
+    test_results = sg.generate()
+    test_signals = sg.triggers_to_states(test_results)
+    expected_signals = [0, 0, 0, 1, 1, 1, 0, 0, -1, -1, -1, -1, -1]
+    assert(test_signals == expected_signals)
+

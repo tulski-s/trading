@@ -55,6 +55,7 @@ class SignalGenerator():
             self.df.loc[:, 'daily_log_returns__learning'] = (
                 np.log(df[self.strategy_price_label]) - df['prev_price__learning']
             )
+        self.hold_x_days_rule_lvl = {}
         self.init_review_span_tracker = 0
         self.max_lookback = 0
         self.rules_idxs = {}
@@ -79,6 +80,9 @@ class SignalGenerator():
                 # check max lookback. in 'generate' it will be starting point so all data is present
                 if self.max_lookback < rule['lookback']:
                     self.max_lookback = rule['lookback']
+                # simple rule may be forced to hold for specific num. of days
+                if rule.get('hold_fixed_days', None):
+                    self.hold_x_days_rule_lvl[rule['id']] = []
             elif rule['type'] == 'convoluted':
                 if rule['aggregation_type'] == 'state-based':
                     rule['_is_state_base'] = True
@@ -237,6 +241,10 @@ class SignalGenerator():
         attmpted to enter. If signal is the same enter. Else, change to neutral position.
         -> hold_x_days - after entering position hold additional x days. Change to neutral
         position after that.
+        """
+        """
+        TODO - hold_x_days should be changed to hold_min_x_days. in case that after holding x days
+        signal is still same - do not exit and re-enter again
         """
         dates = self.df.index.tolist()
         triggers_dates = dates[self.max_lookback:]
@@ -450,12 +458,28 @@ class SignalGenerator():
             result_idx = idx-self.max_lookback
             # get and append results from simple rules
             for simple_rule in self.simple_rules:
-                self.rules_results[simple_rule['id']].append(
-                    simple_rule['func'](
+                _hold_fixed_days = simple_rule.get('hold_fixed_days', None)
+                if not _hold_fixed_days:
+                    rule_res = simple_rule['func'](
                         self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
                         **simple_rule['params']
                     )
-                )
+                else:
+                    # if rule has holding fox x days on rule lvl set up it will output
+                    # same result for x consequent days
+                    if len(self.hold_x_days_rule_lvl[simple_rule['id']]) > 0:
+                        rule_res = self.hold_x_days_rule_lvl[simple_rule['id']].pop()
+                    else:
+                        rule_res = simple_rule['func'](
+                            self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
+                            **simple_rule['params']
+                        )
+                        # hold only long or short. ignore neutral
+                        if rule_res in (-1, 1):
+                            self.hold_x_days_rule_lvl[simple_rule['id']].extend(
+                                (_hold_fixed_days-1)*[rule_res]
+                            )
+                self.rules_results[simple_rule['id']].append(rule_res)
             # get and append results from convoluted rules
             for conv_rule in self.convoluted_rules:
                 simple_rules_results = self._get_simple_rules_results(
@@ -475,6 +499,10 @@ class SignalGenerator():
                 for rule in self.strategy_rules:
                     signal = self.rules_results[rule][result_idx]
                     # use signal from first encountered rule with -1 or 1. or leave 0
+                    """
+                    TODO(slaw): double check what you really want here. what if strategies 
+                    have opposite direcetion? and there is probable more edge cases...
+                    """
                     if signal in (-1, 1):
                         break
             elif self.strategy_type == 'learning':

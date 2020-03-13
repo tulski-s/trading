@@ -1,11 +1,50 @@
 # 3rd party
 import numpy as np
 
+
+class Candle():
+    def __init__(self, open=None, high=None, low=None, close=None):
+        self._open = open
+        self._high = high
+        self._low = low
+        self._close = close
+        self.body = abs(open-close)
+        if close-open > 0:
+            self.color = 'white'
+            self.upper_shadow = high - close
+            self.lower_shadow = open - low
+        elif close-open < 0:
+            self.color = 'black'
+            self.upper_shadow = high - open
+            self.lower_shadow = close - low
+        else:
+            self.color = 'doji'
+            self.upper_shadow = high - close
+            self.lower_shadow = open - low
+
+
+def _get_candles(dict_arrs, open='open', high='high', low='low', close='close'):
+    # all arrays should have the same length so can take any
+    idxs = range(len(dict_arrs[close]))
+    candels = []
+    for idx in idxs:
+        o, h, l, c = [dict_arrs[d][idx] for d in (open, high, low, close)]
+        candels.append(
+            Candle(open=o, high=h, low=l, close=c)
+        )
+    return candels
+
+
 def trend(arr):
     """
     Finds trend in 'arr'. Returns trading signals (1,0,-1) based on slope 
     of the fitted straight line.
     """
+    # scale values to prevent small values of a in case absolute values of arr are small
+    if not isinstance(arr, np.ndarray):
+        arr = np.array(arr)
+    arr = arr*100
+    # if arr is list -> it will just create longer list
     x = np.array(range(1,len(arr)+1))
     A = np.vstack([x, np.ones(len(x))]).T
     # fits: y = ax + b
@@ -177,4 +216,137 @@ def momentum_in_oscillator(arr, threshold=None):
         return 1
     elif (prev_val > threshold) and (cur_val < threshold):
         return -1
+    return 0
 
+
+def candle_hammer_hanging_man(dict_arrs, open='open', high='high', low='low', close='close', no_std=1, conf=True):
+    """
+    Rule looks for Hammer/Hanging Man candle pattern. Lookback period is used to determine relative sizes of
+    candles in given dataset as well as for determining the overall trend. For the main pattern one/two last candles
+    are used. One shuld be Hammer/Hanging Man candle and the other should confirm the reversal. If confirmation is
+    set up (default), it would be gap between subsequent open/closes or black/wite candle with higher/lower open/close
+
+    Hammer/Hanging Man should have:
+        - small body (diff between the body and avg. body size of preceding candles should be bigger 
+          than `no_std` standard deviations of the body sizes)
+        - long lower shadow (>1.5 x body)
+        - short/none upper shadow (that is: upper shadow is shorter than a body)
+
+    Notes:
+    - It is useful to use it with "hold_fixed_days" for the rule
+    """
+    candels = _get_candles(dict_arrs, open=open, high=high, low=low, close=close)
+    if conf == True:
+        form_candle = candels[-2]
+        preceding_candles = candels[:-2]
+    else:
+        form_candle = candels[-1]
+        preceding_candles = candels[:-1]
+    # if no trend - formation is not valid already at this point
+    preceding_trend = trend([c._close for c in preceding_candles])
+    if preceding_trend == 0:
+        return 0
+    # if there is a trend - check if Hammer/Hanging Man exists
+    preceding_bodies = np.array([c.body for c in preceding_candles[:-2]])
+    avg_body_size = preceding_bodies.mean()
+    std_body_size = preceding_bodies.std()
+    is_body_small = (avg_body_size - form_candle.body) > (no_std * std_body_size)
+    is_lower_shadow_long = form_candle.lower_shadow >= 1.5*form_candle.body
+    is_upper_shadow_short = form_candle.upper_shadow < form_candle.body
+    if not all((is_body_small, is_lower_shadow_long, is_upper_shadow_short)):
+        return 0
+    if conf != True:
+        if preceding_trend == -1:
+            return 1
+        elif preceding_trend == 1:
+            return -1
+    # if there is Hammer/Hanging Man candel - check if next canlde confirms it
+    conf_candle = candels[-1]
+    if preceding_trend == -1:
+        # there was downtrend so it is a Hammer
+        if conf_candle.color == 'white':
+            return 1
+        elif (form_candle == 'white') and (form_candle._close < conf_candle._open):
+            return 1
+        elif (form_candle == 'black') and (form_candle._open < conf_candle._open):
+            return 1
+        else:
+            return 0
+    elif preceding_trend == 1:
+        # there was uptrend so it is a Hanging Man
+        if conf_candle.color == 'black':
+            return -1
+        elif (form_candle == 'white') and (form_candle._open > conf_candle._open):
+            return -1
+        elif (form_candle == 'black') and (form_candle._close > conf_candle._open):
+            return -1
+        else:
+            return 0
+
+
+def candle_engulfing(dict_arrs, open='open', high='high', low='low', close='close'):
+    """
+    The engulfing pattern is a major reversal signal with two opposite color candles composing this pattern.
+    There is bullish and bearish engulfing pattern. There are three criteria for an engulfing pattern:
+    1) The market has to be in a clearly definable uptrend or downtrend (even if the trend is short term)
+    2) Two candlesticks comprise the pattern. The second real body must "engulf" the prior real body. That is
+       both open/close prices are higher/lower in latter candle. Shadows do not need to be engulfed.
+    3) The second candle should be the opposite color of the first candle.
+
+    Bullish:
+    The market is in a downtrend, then a white bullish real body wraps around the prior period's black real body.
+
+    Bearish:
+    The market is up trending. The white real body engulfed by a black body is the signal for a top reversal. 
+
+    Notes:
+    - It is useful to use it with "hold_fixed_days" for the rule
+    - Increased volume on the second candle may be an additional confirmation
+    """
+    candels = _get_candles(dict_arrs, open=open, high=high, low=low, close=close)
+    preceding_trend = trend([c._close for c in candels[:-2]])
+    # if no trend - formation is not valid already at this point
+    if preceding_trend == 0:
+        return 0
+    first_candle = candels[-2]
+    second_candle = candels[-1]
+    # bullish
+    if preceding_trend == -1:
+        # first candle needs to be black
+        if first_candle.color != 'black':
+            return 0
+        # second candle needs to be white
+        if second_candle.color != 'white':
+            return 0
+        # a second needs to engulf the first one
+        if (first_candle._open < second_candle._close) and (first_candle._close > second_candle._open):
+            return 1
+        else:
+            return 0
+    # bearish
+    elif preceding_trend == 1:
+        # first candle needs to be white
+        if first_candle.color != 'white':
+            return 0
+        # second candle needs to be black
+        if second_candle.color != 'black':
+            return 0
+        # a second needs to engulf the first one
+        if (first_candle._close < second_candle._open) and (first_candle._open > second_candle._close):
+            return -1
+        else:
+            return 0
+
+
+def main():
+    dict_arrs = {
+        'open': np.array([420.0, 424.8, 430.0, 425.4, 429.8, 434.6, 429.0, 422.2, 421.6, 432.2]),
+        'high': np.array([429.0, 428.8, 430.0, 429.4, 440.0, 440.0, 429.6, 425.4, 428.0, 439.0]),
+        'low': np.array([417.4, 418.2, 415.0, 415.8, 429.0, 429.8, 416.0, 418.4, 420.0, 421.0]),
+        'close': np.array([426.6, 423.4, 424.2, 428.0, 436.4, 432.2, 420.0, 425.0, 425.8, 425.4])
+    }
+    res = candle_hammer_hanging_man(dict_arrs)
+
+
+if __name__ == '__main__':
+    main()

@@ -44,7 +44,7 @@ def test_downtrend():
 
 
 def test_horizontal():
-    arr = np.array([-1,10,-2, 12, 0, 3])
+    arr = np.array([-1,10,-2, 12, 0, 2.2])
     rule_output = rules.trend(arr)
     assert(rule_output == 0)
 
@@ -161,20 +161,42 @@ def test_channel_break_out_4(prices_multp_1):
     assert(rule_output == 0)
 
 
-def momentum_in_oscillator_cross_from_below():
+def test_momentum_in_oscillator_cross_from_below():
     arr = np.array([.1, .15, .25, .1, .25])
     rule_output = rules.momentum_in_oscillator(arr, threshold=0.2)
     assert(rule_output == 1)
 
 
-def momentum_in_oscillator_cross_from_above():
+def test_momentum_in_oscillator_cross_from_above():
     arr = np.array([.1, .15, .25, .1, .05])
     rule_output = rules.momentum_in_oscillator(arr, threshold=0.1)
     assert(rule_output == -1)
 
 
-def momentum_in_oscillator_close_cross_but_no():
+def test_momentum_in_oscillator_close_cross_but_no():
     arr = np.array([.2, .1, .2, .1, .25])
     rule_output = rules.momentum_in_oscillator(arr, threshold=0.15)
     assert(rule_output == 0)
+
+
+def test_candle_engulfing_short():
+    dict_arrs = {
+        'open': [3.6, 3.5, 3.47, 3.73, 3.85],
+        'high': [3.6, 3.59, 3.71, 3.88, 3.92],
+        'low': [3.42, 3.4, 3.42, 3.72, 3.53], 
+        'close': [3.48, 3.44, 3.68, 3.83, 3.55]
+    }
+    rule_output = rules.candle_engulfing(dict_arrs)
+    assert(rule_output == -1)
+
+
+def test_candle_engulfing_long():
+    dict_arrs = {
+        'open': [4.7, 4.7, 4.7, 4.55, 4.55, 4.45, 4.4, 4.4, 4.4, 4.3, 4.05],
+        'high': [4.7, 4.7, 4.7, 4.7, 4.55, 4.45, 4.5, 4.4, 4.5, 4.4, 4.45],
+        'low': [4.65, 4.65, 4.6, 4.55, 4.55, 4.4, 4.4, 4.4, 4.35, 4.25, 4.05],
+        'close': [4.7, 4.65, 4.6, 4.65, 4.55, 4.45, 4.5, 4.4, 4.4, 4.25, 4.45]
+    }
+    rule_output = rules.candle_engulfing(dict_arrs)
+    assert(rule_output == 1)
 

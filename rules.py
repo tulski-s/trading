@@ -35,25 +35,46 @@ def _get_candles(dict_arrs, open='open', high='high', low='low', close='close'):
     return candels
 
 
+def _rescale(arr, new_max=100, new_min=0):
+    arr_min = min(arr)
+    arr_max = max(arr)
+    if arr_max == arr_min:
+        # all values are the same. do not scale
+        return arr
+    k = (new_max-new_min)/(arr_max - arr_min)
+    return k * (arr-arr_max)+new_max
+
+
 def trend(arr):
     """
     Finds trend in 'arr'. Returns trading signals (1,0,-1) based on slope 
     of the fitted straight line.
     """
-    # scale values to prevent small values of a in case absolute values of arr are small
     if not isinstance(arr, np.ndarray):
         arr = np.array(arr)
-    arr = arr*100
-    # if arr is list -> it will just create longer list
-    x = np.array(range(1,len(arr)+1))
+    # scale values to allow similar comparison of "a"
+    arr = _rescale(arr)
+    len_arr = len(arr)
+    x = np.array(range(1,len_arr+1))
     A = np.vstack([x, np.ones(len(x))]).T
     # fits: y = ax + b
     a, b = np.linalg.lstsq(A, arr, rcond=None)[0]
-    # arbitrary threshold of 0.25. no science here.
-    if a >= .25:
-        return 1
-    elif a < -.25:
-        return -1
+    # arbitrary threshold of 2. no science here - I've visually tested and adjusted this number
+    if len_arr <= 7:
+        if a > 9:
+            return 1
+        elif a < -9:
+            return -1
+    elif len_arr <= 14:
+        if a > 5:
+            return 1
+        elif a < -5:
+            return -1
+    else:
+        if a > .7:
+            return 1
+        elif a < -.7:
+            return -1
     return 0
 
 

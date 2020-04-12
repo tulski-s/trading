@@ -359,6 +359,73 @@ def candle_engulfing(dict_arrs, open='open', high='high', low='low', close='clos
             return 0
 
 
+def candle_stars(dict_arrs, open='open', high='high', low='low', close='close'):
+    """
+    "Morning Star" is bullish. When there was downtrend and it appears, go long.
+    It is comprised of 3 candles:
+    - 1st should be big black
+    - 2nd should be very small. Color does not matter
+    - 3rd should be big white. It should cover at least half of the first candle
+
+    "Evening Star" is bearish. When there was an uptrend and it appears, go short. It is also made from 3 candles:
+    - 1st should be big white
+    - 2nd should be very small. Color does not matter
+    - 3rd should be big black. It should cover at least half of the first candle
+
+    Big candle shold have body bigger than average body in the array. Small should be smaller than average.
+    """
+    candels = _get_candles(dict_arrs, open=open, high=high, low=low, close=close)
+    preceding_trend = trend([c._close for c in candels[:-3]])
+    preceding_candles = candels[:-3]
+    # if no trend - formation is not valid already at this point
+    if preceding_trend == 0:
+        return 0
+    first_candle = candels[-3]
+    second_candle = candels[-2]
+    third_candle = candels[-1]
+    avg_body_size = np.array([c.body for c in preceding_candles[:-3]]).mean()
+    # morning star
+    if preceding_trend == -1:
+        # first candle needs to be big black
+        if first_candle.color != 'black':
+            return 0
+        if first_candle.body < avg_body_size:
+            return 0
+        # second candle needs to be small
+        if second_candle.body > avg_body_size:
+            return 0
+        # a thirds needs to be white. it needs to cover at least half of the first candle
+        if third_candle.color != 'white':
+            return 0
+        if third_candle._close < ((first_candle._open + first_candle._close) / 2):
+            return 0
+        # it needs to close above firt candle
+        if third_candle._close < first_candle._open:
+            return 0
+        return 1
+
+    # evening star
+    if preceding_trend == 1:
+        # first candle needs to be big white
+        if first_candle.color != 'white':
+            return 0
+        if first_candle.body < avg_body_size:
+            return 0
+        # second candle needs to be small
+        if second_candle.body > avg_body_size:
+            return 0
+        # a thirds needs to be black.
+        if third_candle.color != 'black':
+            return 0
+        # it needs to cover at least half of the first candle
+        if (third_candle._open < (first_candle._open + first_candle._close) / 2):
+            return 0
+        # it needs to close below first candle
+        if third_candle._close > first_candle._open:
+            return 0
+        return -1
+
+
 def main():
     dict_arrs = {
         'open': np.array([420.0, 424.8, 430.0, 425.4, 429.8, 434.6, 429.0, 422.2, 421.6, 432.2]),

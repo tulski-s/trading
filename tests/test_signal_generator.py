@@ -371,7 +371,7 @@ def test_simpl_rule_results_appending(config_2, pricing_df2):
 
 def test_accessing_index_for_convoluted_rule(config_3, pricing_df1):
     """
-    [1, -1, -1, -1, -1, 1, 1]   'trend'
+    [0,  0, -1, -1, -1, 1, 1]   'trend'
     [0,  0,  0, -1,  0, 1, 0]   'supprot/resistance'
     """
     sg = SignalGenerator(df=pricing_df1, config=config_3)
@@ -381,7 +381,7 @@ def test_accessing_index_for_convoluted_rule(config_3, pricing_df1):
     test_results = []
     for idx in idxs:
         test_results.append(sg._get_simple_rules_results(rules_ids, idx))
-    expexted_results = [[1,0], [-1,0], [-1,-1], [1,1]]
+    expexted_results = [[0,0], [-1,0], [-1,-1], [1,1]]
     assert(test_results == expexted_results)
 
 

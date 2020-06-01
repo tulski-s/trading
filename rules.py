@@ -102,7 +102,7 @@ def _find_support_resistance(y, e=False):
         past_times_bigger_than_itself = list(
             map(lambda x: np.where(y[:x[0]]>x[1])[0].size, list(enumerate(y)))
         )
-        bigger_than_e_xtimes_idxs = np.where(np.array(past_times_smaller_than_itself) > e)[0]
+        bigger_than_e_xtimes_idxs = np.where(np.array(past_times_bigger_than_itself) < e)[0]
         resistance_idx = max(bigger_than_e_xtimes_idxs)
         resistance = y[resistance_idx]
     return (support, resistance)

@@ -97,28 +97,6 @@ class SignalGenerator():
             return self._generate_final_signal_with_constraints(initial_signal)
         return self._generate_final_signal(initial_signal)
 
-    def triggers_to_states(self, df):
-        """
-        Given final rule triggers (0, 1 for entry_long, exit_long, entry_short, exit_short),
-        return position state at each day (like: 1, 1, 1, 0, 0, 0, -1, -1 .... etc.) as list.
-        States are: -1 (short), 0 (neutral), 1 (long).
-        """
-        last_state = 0
-        states = []
-        for idx in range(len(df.index)):
-            triggers_vals = df.iloc[idx][list(self._triggers)]
-            # go neutral
-            if triggers_vals[1] == 1 or triggers_vals[3] == 1:
-                last_state = 0
-            # go long
-            if triggers_vals[0] == 1:
-                last_state = 1
-            # go short 
-            elif triggers_vals[2] == 1:
-                last_state = -1
-            states.append(last_state)
-        return states
-
     def plot_strategy_result(self, df, price_label=None):
         # get long/short periods
         periods = {}
@@ -611,3 +589,26 @@ class SignalGenerator():
                 # if there is a tie in voting -> go neutral
                 return 0
             return most_freq_position
+
+
+def triggers_to_states(df):
+        """
+        Given final rule triggers (0, 1 for entry_long, exit_long, entry_short, exit_short),
+        return position state at each day (like: 1, 1, 1, 0, 0, 0, -1, -1 .... etc.) as list.
+        States are: -1 (short), 0 (neutral), 1 (long).
+        """
+        last_state = 0
+        states = []
+        for idx in range(len(df.index)):
+            triggers_vals = df.iloc[idx][['entry_long', 'exit_long', 'entry_short', 'exit_short']]
+            # go neutral
+            if triggers_vals[1] == 1 or triggers_vals[3] == 1:
+                last_state = 0
+            # go long
+            if triggers_vals[0] == 1:
+                last_state = 1
+            # go short 
+            elif triggers_vals[2] == 1:
+                last_state = -1
+            states.append(last_state)
+        return states

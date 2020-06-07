@@ -8,6 +8,7 @@ import pytest
 # custom
 from signal_generator import (
     SignalGenerator,
+    triggers_to_states,
 )
 import rules
 
@@ -667,9 +668,7 @@ def test_triggers_to_states_1(pricing_df1, config_1):
         'exit_short':  [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0],
     }
     df = pd.DataFrame(mock_rule_triggers)
-    # real df with data and config does not matter here
-    sg = SignalGenerator(df=pricing_df1, config=config_1)
-    test_states = sg.triggers_to_states(df)
+    test_states = triggers_to_states(df)
     expected_states = [0, 0, 1, -1, 1, 1, 1, 0, 0, -1, -1]
     assert(test_states == expected_states)
 
@@ -682,7 +681,7 @@ def test_multiple_ts_in_simple_rule_1(config_10):
     })
     sg = SignalGenerator(df=df, config=config_10)
     test_results = sg.generate()
-    test_signals = sg.triggers_to_states(test_results)
+    test_signals = triggers_to_states(test_results)
     expected_signals = [0, 1, 1, -1, 1]
     assert(test_signals == expected_signals)
 
@@ -691,7 +690,7 @@ def test_hold_x_days_on_rule_lvl2(pricing_df2, config_2):
     config_2['rules'][0]['hold_fixed_days'] = 3
     sg = SignalGenerator(df=pricing_df2, config=config_2)
     test_results = sg.generate()
-    test_signals = sg.triggers_to_states(test_results)
+    test_signals = triggers_to_states(test_results)
     expected_signals = [0, 0, 0, 1, 1, 1, 0, 0, -1, -1, -1, -1, -1]
     assert(test_signals == expected_signals)
 

@@ -179,7 +179,7 @@ def main():
         tester_results, tester_trades = tester.run()
         tester_results.loc[:, 'daily_returns'] = results.get_daily_returns(tester_results)
         tester_results.loc[:, 'actual_price_change'] = results.get_price_change(rs_signal)
-        tester_results.loc[:, 'position_states'] = sg.triggers_to_states(rs_signal)
+        tester_results.loc[:, 'position_states'] = signal_generator.triggers_to_states(rs_signal)
         rules_results[rs_name] = tester_results
 
     avg_daily_returns = {r: df['daily_returns'].mean() for r, df in rules_results.items()}

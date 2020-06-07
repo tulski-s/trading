@@ -6,6 +6,9 @@ from commons import (
     setup_logging,
 )
 
+class AccountBankruptError(Exception):
+    pass
+
 
 class Backtester():
     def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False, 
@@ -81,7 +84,7 @@ class Backtester():
                     self.log.debug('\t+ Not exiting from: ' + symbol)
             
             if self._available_money < 0:
-                raise ValueError(
+                raise AccountBankruptError(
                     "Account bankrupted! Money after sells is: {}. Backtester cannot run anymore!".format(
                         self._available_money
                     ))

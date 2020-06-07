@@ -7,7 +7,10 @@ from position_size import (
     MaxFirstEncountered,
     FixedCapitalPerc,
 )
-from backtester import Backtester
+from backtester import (
+    AccountBankruptError,
+    Backtester,
+)
 
 
 def signals_test_sigs_1():
@@ -412,7 +415,7 @@ def test_functional_backtester_4_days_trades_TEST_SIGS_2(backtester):
 
 @pytest.mark.parametrize('backtester', [(signals_test_sigs_2(), max_first_encountered_alpha_sizer(), 5000000)], indirect=True)
 def test_bankruptcy(backtester):
-    with pytest.raises(ValueError):
+    with pytest.raises(AccountBankruptError):
         results, trades = backtester.run(test_days=3)
 
 

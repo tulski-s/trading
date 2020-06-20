@@ -80,7 +80,14 @@ def roc_oscillator(df_org, days=None, col=None):
     (qt − qt_minus_m)/qt_minus_m, where qt is the value of `col` (e.g. price pr volume) at time t.
     """
     df = df_org.copy()
-    df.loc[:, 'mday_ago'] = df[col].shift(days)
-    df.loc[:, 'roc'] = (df['close'] - df['mday_ago']) / df['mday_ago']
-    return df['roc']
+    df.loc[:, '_mday_ago'] = df[col].shift(days)
+    df.loc[:, '_roc'] = (df[col] - df['_mday_ago']) / df['_mday_ago']
+    return df['_roc']
+
+
+def simple_ma(df_org, days=None, col=None):
+    # Simple wrapper around pandas rollign to gfet simple moving average 
+    df = df_org.copy()
+    df.loc[:, f'sma{days}'] = df[col].rolling(window=days).mean()
+    return df[f'sma{days}']
 

@@ -1,3 +1,7 @@
+# built in
+import os
+import pickle
+
 # 3rd party
 import numpy as np
 import pandas as pd
@@ -11,8 +15,15 @@ from commons import (
 import rules
 import gpw_data
 
+
+class NotAllRuleResultsPresentError(Exception):
+    pass
+
+
 class SignalGenerator():
-    def __init__(self, df=None, config=None, logger=None, debug=False):
+    def __init__(
+        self, df=None, config=None, logger=None, debug=False, load_rules_results_path=None, load_rules_results_prefix='',
+    ):
         self.log = setup_logging(logger=logger, debug=debug)
         self.config = config
         self.df = df
@@ -90,6 +101,12 @@ class SignalGenerator():
                     rule['_is_state_base'] = False
                 self.convoluted_rules.append(rule)
         self._triggers = ('entry_long', 'exit_long', 'entry_short', 'exit_short')
+        # load stored rules results (to speed up execution)
+        if load_rules_results_path:
+            self._load_rules_results(load_rules_results_path, load_rules_results_prefix)
+            self._rules_results_loaded = True
+        else:
+            self._rules_results_loaded = False
 
     def generate(self):
         initial_signal = self._generate_initial_signal()
@@ -178,6 +195,36 @@ class SignalGenerator():
                 linestyle='-',
                 linewidth=2
             )
+
+    def save_rules_results(self, path=None, prefix=''):
+        """
+        Saves results of simple and complex rule into file.
+        """
+        for rule_id, rule_res in self.rules_results.items():
+            file_full_path = os.path.join(path, prefix+rule_id)
+            with open(file_full_path, 'wb') as fh:
+                pickle.dump(rule_res, fh)
+
+    def _load_rules_results(self, path, prefix):
+        """
+        Loads saved (in `path`) rule results. All rules has to be present.
+        """
+        rules_to_be_loaded = set(self.rules_results.keys())
+        all_files = set([f for f in os.listdir(path)])
+        rules_results = {}
+        for rule_id in rules_to_be_loaded.copy():
+            file_name = prefix+rule_id
+            if file_name in all_files:
+                with open(os.path.join(path, file_name), 'rb') as fh:
+                    rules_results[rule_id] = pickle.load(fh)
+                rules_to_be_loaded.remove(rule_id)
+        
+        if len(rules_to_be_loaded) == 0:
+            self.rules_results = rules_results
+        else:
+            raise NotAllRuleResultsPresentError(
+                f'Not all rules are present in {path}. Missing are: {rules_to_be_loaded}'
+                )
 
     def _generate_final_signal(self, initial_signal):
         """
@@ -434,53 +481,52 @@ class SignalGenerator():
             review_span_tracker = self.init_review_span_tracker
         while idx < self.index:
             result_idx = idx-self.max_lookback
-            # get and append results from simple rules
-            for simple_rule in self.simple_rules:
-                _hold_fixed_days = simple_rule.get('hold_fixed_days', None)
-                if not _hold_fixed_days:
-                    rule_res = simple_rule['func'](
-                        self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
-                        **simple_rule['params']
-                    )
-                else:
-                    # if rule has holding fox x days on rule lvl set up it will output
-                    # same result for x consequent days
-                    if len(self.hold_x_days_rule_lvl[simple_rule['id']]) > 0:
-                        rule_res = self.hold_x_days_rule_lvl[simple_rule['id']].pop()
-                    else:
+            if not self._rules_results_loaded:
+                # get and append results from simple rules
+                for simple_rule in self.simple_rules:
+                    _hold_fixed_days = simple_rule.get('hold_fixed_days', None)
+                    if not _hold_fixed_days:
                         rule_res = simple_rule['func'](
                             self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
                             **simple_rule['params']
                         )
-                        # hold only long or short. ignore neutral
-                        if rule_res in (-1, 1):
-                            self.hold_x_days_rule_lvl[simple_rule['id']].extend(
-                                (_hold_fixed_days-1)*[rule_res]
+                    else:
+                        # if rule has holding fox x days on rule lvl set up it will output
+                        # same result for x consequent days
+                        if len(self.hold_x_days_rule_lvl[simple_rule['id']]) > 0:
+                            rule_res = self.hold_x_days_rule_lvl[simple_rule['id']].pop()
+                        else:
+                            rule_res = simple_rule['func'](
+                                self._get_ts(simple_rule['ts'], idx, simple_rule['lookback']),
+                                **simple_rule['params']
                             )
-                self.rules_results[simple_rule['id']].append(rule_res)
-            # get and append results from convoluted rules
-            for conv_rule in self.convoluted_rules:
-                simple_rules_results = self._get_simple_rules_results(
-                    conv_rule['simple_rules'],
-                    result_idx,
-                    as_dict=conv_rule['_is_state_base'],
-                    conv_rule_id=conv_rule['id'],
-                )
-                self.rules_results[conv_rule['id']].append(
-                    self.combine_simple_results(
-                        rules_results=simple_rules_results,
-                        aggregation_type=conv_rule['aggregation_type'], 
-                        aggregation_params=conv_rule['aggregation_params'],
+                            # hold only long or short. ignore neutral
+                            if rule_res in (-1, 1):
+                                self.hold_x_days_rule_lvl[simple_rule['id']].extend(
+                                    (_hold_fixed_days-1)*[rule_res]
+                                )
+                    self.rules_results[simple_rule['id']].append(rule_res)
+                # get and append results from convoluted rules
+                for conv_rule in self.convoluted_rules:
+                    simple_rules_results = self._get_simple_rules_results(
+                        conv_rule['simple_rules'],
+                        result_idx,
+                        as_dict=conv_rule['_is_state_base'],
+                        conv_rule_id=conv_rule['id'],
                     )
-                )
+                    self.rules_results[conv_rule['id']].append(
+                        self.combine_simple_results(
+                            rules_results=simple_rules_results,
+                            aggregation_type=conv_rule['aggregation_type'], 
+                            aggregation_params=conv_rule['aggregation_params'],
+                        )
+                    )
             if self.strategy_type == 'fixed':
                 for rule in self.strategy_rules:
                     signal = self.rules_results[rule][result_idx]
                     # use signal from first encountered rule with -1 or 1. or leave 0
-                    """
-                    TODO(slaw): double check what you really want here. what if strategies 
-                    have opposite direcetion? and there is probable more edge cases...
-                    """
+                    # that makes order of rules important. rules with highest priority
+                    # should be earlier in list
                     if signal in (-1, 1):
                         break
             elif self.strategy_type == 'learning':

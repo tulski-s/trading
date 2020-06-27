@@ -1,9 +1,12 @@
+# built in
+import os
+import pickle
+
 # 3rd party
 import numpy as np
 from numpy.testing import assert_array_equal
 import pandas as pd
 import pytest
-
 
 # custom
 from signal_generator import (
@@ -693,4 +696,58 @@ def test_hold_x_days_on_rule_lvl2(pricing_df2, config_2):
     test_signals = triggers_to_states(test_results)
     expected_signals = [0, 0, 0, 1, 1, 1, 0, 0, -1, -1, -1, -1, -1]
     assert(test_signals == expected_signals)
+
+
+def test_save_rules_results(tmpdir, config_7, pricing_df3):
+    sg = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+    )
+    prefix = 'XYZ_'
+    sg.generate()
+    sg.save_rules_results(path=tmpdir, prefix=prefix)
+    test_results = []
+    for rule_id in sg.rules_results.keys():
+        expected_res = sg.rules_results[rule_id]
+        with open(os.path.join(tmpdir, prefix+rule_id), 'rb') as fh:
+            test_res = pickle.load(fh)
+        if test_res == expected_res:
+            test_results.append(True)
+        else:
+            test_results.append(False)
+    assert(all(test_results) == True)
+
+
+def test_load_rules_results(tmpdir, config_7, pricing_df3):
+    sg = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+    )
+    prefix = 'ABC_'
+    sg.generate()
+    sg.save_rules_results(path=tmpdir, prefix=prefix)
+    sg_raw = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+        load_rules_results_path=tmpdir,
+        load_rules_results_prefix=prefix
+    )
+    assert(sg.rules_results == sg_raw.rules_results)
+    
+
+def test_results_with_load_rules(tmpdir, config_7, pricing_df3):
+    sg = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+    )
+    expected_results = sg.generate()
+    sg.save_rules_results(path=tmpdir)
+    sg_raw = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+        load_rules_results_path=tmpdir
+    )
+    test_results = sg_raw.generate()
+    assert(triggers_to_states(expected_results) == triggers_to_states(test_results))
+
 

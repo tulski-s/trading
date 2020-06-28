@@ -676,6 +676,14 @@ def test_triggers_to_states_1(pricing_df1, config_1):
     assert(test_states == expected_states)
 
 
+def test_triggers_to_states_legacy_vs_new(pricing_df1, config_3):
+    sg = SignalGenerator(df=pricing_df1, config=config_3)
+    test_results = sg.generate()
+    legacy_impl = triggers_to_states(test_results)
+    attr_impl = sg.final_positions
+    assert(legacy_impl == attr_impl)
+
+
 def test_multiple_ts_in_simple_rule_1(config_10):
     df = pd.DataFrame({
         'close': [1, 1, 1, 1, 1],

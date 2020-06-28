@@ -101,6 +101,7 @@ class SignalGenerator():
                     rule['_is_state_base'] = False
                 self.convoluted_rules.append(rule)
         self._triggers = ('entry_long', 'exit_long', 'entry_short', 'exit_short')
+        self.final_positions = self._reset_final_positions()
         # load stored rules results (to speed up execution)
         if load_rules_results_path:
             self._load_rules_results(load_rules_results_path, load_rules_results_prefix)
@@ -234,6 +235,7 @@ class SignalGenerator():
 
         No constraints are implemented here such just transformation is performed.
         """
+        self._reset_final_positions()
         dates = self.df.index.tolist()
         triggers_dates = dates[self.max_lookback:]
         current = 0
@@ -242,7 +244,7 @@ class SignalGenerator():
         for idx in range(len(triggers_dates)):
             current = initial_signal[idx]
             if current == previous:
-                self._remain_position(signal_triggers)
+                self._remain_position(signal_triggers, position=current)
             else:
                 self._change_position(previous, current, signal_triggers)
             previous = current
@@ -271,6 +273,7 @@ class SignalGenerator():
         TODO - hold_x_days should be changed to hold_min_x_days. in case that after holding x days
         signal is still same - do not exit and re-enter again
         """
+        self._reset_final_positions()
         dates = self.df.index.tolist()
         triggers_dates = dates[self.max_lookback:]
         current, previous, idx = 0, 0, 0
@@ -283,20 +286,20 @@ class SignalGenerator():
             if self.wait_entry_confirmation:
                 # Case-0 Tracker not active, already in long/short position
                 if not _wait_entry_confirmation_tracker and (current == previous):
-                    self._remain_position(signal_triggers)
+                    self._remain_position(signal_triggers, position=current)
                 # Case-1 Tracker not active and entry signal. Set up expected signal and start to wait.
                 elif not _wait_entry_confirmation_tracker and current in (-1, 1):
                     _expected_signal = current
                     _wait_entry_confirmation_tracker = 1
                     _previous_at_wait_start = previous
-                    self._remain_position(signal_triggers)
+                    self._remain_position(signal_triggers, position=current)
                 # Case-2 Tracker not active, but no entry signal. Do nothing.
                 elif not _wait_entry_confirmation_tracker and current == 0:
-                    self._remain_position(signal_triggers)
+                    self._remain_position(signal_triggers, position=current)
                 # Case-3 Tracker is active, but still need to wait.
                 elif _wait_entry_confirmation_tracker < self.wait_entry_confirmation:
                     _wait_entry_confirmation_tracker += 1
-                    self._remain_position(signal_triggers)
+                    self._remain_position(signal_triggers, position=current)
                 # Case-4 Waited enough time. Check if signal is what it was expected
                 elif _wait_entry_confirmation_tracker == self.wait_entry_confirmation:
                     # signal as expected
@@ -304,7 +307,7 @@ class SignalGenerator():
                         self._change_position(_previous_at_wait_start, current, signal_triggers)
                         # if both wait_entry_confirmation and hold_x_days are active
                         if self.hold_x_days:
-                            self._remain_position(signal_triggers, days=self.hold_x_days)
+                            self._remain_position(signal_triggers, days=self.hold_x_days, position=current)
                             previous, current = current, 0
                             self._change_position(previous, current, signal_triggers)
                             idx += self.hold_x_days + 1
@@ -316,12 +319,12 @@ class SignalGenerator():
                     _previous_at_wait_start = None
             if not self.wait_entry_confirmation and self.hold_x_days:
                 if current == previous:
-                    self._remain_position(signal_triggers)
+                    self._remain_position(signal_triggers, position=current)
                 elif current in (-1, 1):
                     # enter position
                     self._change_position(previous, current, signal_triggers)
                     # stay there for x days
-                    self._remain_position(signal_triggers, days=self.hold_x_days)
+                    self._remain_position(signal_triggers, days=self.hold_x_days, position=current)
                     # next go back to neutral position
                     previous, current = current, 0
                     self._change_position(previous, current, signal_triggers)
@@ -350,10 +353,11 @@ class SignalGenerator():
         final_signal.fillna(0, inplace=True)
         return final_signal
 
-    def _remain_position(self, signal_triggers, days=1):
+    def _remain_position(self, signal_triggers, days=1, position=None):
         """
         Keep current position by not triggering any signal to change position.
         """
+        self.final_positions.extend(days*[position])
         for trigger in self._triggers:
             signal_triggers[trigger].extend(days*[0])
 
@@ -361,6 +365,7 @@ class SignalGenerator():
         """
         Changes long/short/neutral "previous" position to current one.
         """
+        self.final_positions.append(current)
         new_triggers ={k: 0 for k in self._triggers}
         if previous == 1:
             new_triggers['exit_long'] = 1
@@ -636,25 +641,31 @@ class SignalGenerator():
                 return 0
             return most_freq_position
 
+    def _reset_final_positions(self):
+        self.final_positions = self.max_lookback*[0]       
+
 
 def triggers_to_states(df):
-        """
-        Given final rule triggers (0, 1 for entry_long, exit_long, entry_short, exit_short),
-        return position state at each day (like: 1, 1, 1, 0, 0, 0, -1, -1 .... etc.) as list.
-        States are: -1 (short), 0 (neutral), 1 (long).
-        """
-        last_state = 0
-        states = []
-        for idx in range(len(df.index)):
-            triggers_vals = df.iloc[idx][['entry_long', 'exit_long', 'entry_short', 'exit_short']]
-            # go neutral
-            if triggers_vals[1] == 1 or triggers_vals[3] == 1:
-                last_state = 0
-            # go long
-            if triggers_vals[0] == 1:
-                last_state = 1
-            # go short 
-            elif triggers_vals[2] == 1:
-                last_state = -1
-            states.append(last_state)
-        return states
+    """
+    Note - this implementation is slow and no longer needed. Use final_positions attribute of
+    SignalGenerator insted. Keeping it for backward compatibility
+
+    Given final rule triggers (0, 1 for entry_long, exit_long, entry_short, exit_short),
+    return position state at each day (like: 1, 1, 1, 0, 0, 0, -1, -1 .... etc.) as list.
+    States are: -1 (short), 0 (neutral), 1 (long).
+    """
+    last_state = 0
+    states = []
+    for idx in range(len(df.index)):
+        triggers_vals = df.iloc[idx][['entry_long', 'exit_long', 'entry_short', 'exit_short']]
+        # go neutral
+        if triggers_vals[1] == 1 or triggers_vals[3] == 1:
+            last_state = 0
+        # go long
+        if triggers_vals[0] == 1:
+            last_state = 1
+        # go short 
+        elif triggers_vals[2] == 1:
+            last_state = -1
+        states.append(last_state)
+    return states

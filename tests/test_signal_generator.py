@@ -457,7 +457,7 @@ def test_combining_state_based_convoluted_rule_3_states(config_8, pricing_df3):
 def test_generate_final_signal_no_constraints(pricing_df1, config_2):
     sg = SignalGenerator(df=pricing_df1, config=config_2)
     test_initial_results = [1,1,1,1,0,0,0,-1,-1,1]
-    test_final_results = sg._generate_final_signal(test_initial_results)
+    test_final_results = sg._generate_final_signal(test_initial_results, return_signal=True)
     test_final_results.drop(['close'], axis=1, inplace=True)
     expected_results = pd.DataFrame({
         'entry_long': [0,0,0] + [1,0,0,0,0,0,0,0,0,1],
@@ -472,7 +472,9 @@ def test_generate_final_signal_with_wait_for_confirmation(pricing_df1, config_4)
     sg = SignalGenerator(df=pricing_df1, config=config_4)
     # powinno miec 12. bo 13 df + 1d lookback
     test_initial_results = [0, 1, 1, 1, 1, -1, 0, 1, -1, -1, -1, 1]
-    test_final_results = sg._generate_final_signal_with_constraints(test_initial_results)
+    test_final_results = sg._generate_final_signal_with_constraints(
+        test_initial_results, return_signal=True,
+    )
     test_final_results.drop(['close'], axis=1, inplace=True)
     expected_results = pd.DataFrame({
         'entry_long': [0] + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -486,7 +488,9 @@ def test_generate_final_signal_with_wait_for_confirmation(pricing_df1, config_4)
 def test_generate_final_signal_with_hold_for_x_days(pricing_df1, config_5):
     sg = SignalGenerator(df=pricing_df1, config=config_5)
     test_initial_results = [1, 1, 1, 1, 1, -1, -1, -1, -1, 0, 0, 0]
-    test_final_results = sg._generate_final_signal_with_constraints(test_initial_results)
+    test_final_results = sg._generate_final_signal_with_constraints(
+        test_initial_results, return_signal=True,
+    )
     test_final_results.drop(['close'], axis=1, inplace=True)
     expected_results = pd.DataFrame({
         'entry_long': [0] + [1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0],
@@ -501,7 +505,9 @@ def test_generate_with_hold_for_x_days_exeed_index(pricing_df1, config_6):
     config_6['strategy']['constraints']['hold_x_days'] = 100
     init_results = [-1, 0, -1, 1, 1, -1, 1, 1, 1, 1, 0, 1]
     sg = SignalGenerator(df=pricing_df1, config=config_6)
-    test_final_results = sg._generate_final_signal_with_constraints(init_results)
+    test_final_results = sg._generate_final_signal_with_constraints(
+        init_results, return_signal=True
+    )
     test_final_results.drop(['close'], axis=1, inplace=True)
     expected_results = pd.DataFrame({
         'entry_long': 13*[0],
@@ -515,7 +521,9 @@ def test_generate_with_hold_for_x_days_exeed_index(pricing_df1, config_6):
 def test_generate_final_signal_with_both_constraints(pricing_df1, config_6):
     sg = SignalGenerator(df=pricing_df1, config=config_6)
     test_initial_results = [-1, 0, -1, 1, 1, -1, 1, 1, 1, 1, 0, 1]
-    test_final_results = sg._generate_final_signal_with_constraints(test_initial_results)
+    test_final_results = sg._generate_final_signal_with_constraints(
+        test_initial_results, return_signal=True
+    )
     test_final_results.drop(['close'], axis=1, inplace=True)
     expected_results = pd.DataFrame({
         'entry_long': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0],
@@ -765,3 +773,9 @@ def test_results_with_load_rules(tmpdir, config_7, pricing_df3):
     assert(all(same_results) == True)
 
 
+def test_positions_in_final_df(pricing_df2, config_2):
+    sg = SignalGenerator(df=pricing_df2, config=config_2)
+    test_results = sg.generate()
+    test_positions = test_results['position'].tolist()
+    expected_positions = [0, 0, 0, 1, 1, 1, 0, 0, -1, -1, -1, -1, 1]
+    assert(test_positions == expected_positions)

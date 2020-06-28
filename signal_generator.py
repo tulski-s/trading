@@ -112,8 +112,12 @@ class SignalGenerator():
     def generate(self):
         initial_signal = self._generate_initial_signal()
         if any([self.wait_entry_confirmation, self.hold_x_days]):
-            return self._generate_final_signal_with_constraints(initial_signal)
-        return self._generate_final_signal(initial_signal)
+            signal_triggers_df = self._generate_final_signal_with_constraints(initial_signal)
+        else:
+            signal_triggers_df = self._generate_final_signal(initial_signal)
+        final_signal = self._merge_final_signal(signal_triggers_df)
+        final_signal.loc[:, 'position'] = self.final_positions
+        return final_signal
 
     def plot_strategy_result(self, df, price_label=None):
         # get long/short periods
@@ -227,7 +231,7 @@ class SignalGenerator():
                 f'Not all rules are present in {path}. Missing are: {rules_to_be_loaded}'
                 )
 
-    def _generate_final_signal(self, initial_signal):
+    def _generate_final_signal(self, initial_signal, return_signal=False):
         """
         Transforms initial signal to the final output. That is, it takes sequence of positions like
         1,1,0,0,0,-1,-1 and outputs oryginal pricing dataframe with 4 additional columns: enter_long,
@@ -249,17 +253,12 @@ class SignalGenerator():
                 self._change_position(previous, current, signal_triggers)
             previous = current
         signal_triggers_df = pd.DataFrame(signal_triggers, index=self.df.index[self.max_lookback:])
-        final_signal = pd.merge(
-            left=self.df,
-            right=signal_triggers_df,
-            how='left',
-            left_index=True,
-            right_index=True
-        )
-        final_signal.fillna(0, inplace=True)
-        return final_signal
+        if return_signal:
+            return self._merge_final_signal(signal_triggers_df)
+        else:
+            return signal_triggers_df
 
-    def _generate_final_signal_with_constraints(self, initial_signal):
+    def _generate_final_signal_with_constraints(self, initial_signal, return_signal=False):
         """
         Same as _generate_final_signal but with constraints implementation. Contraints can be used 
         separately or together. Available contraints are:
@@ -341,17 +340,11 @@ class SignalGenerator():
         if len(signal_triggers['entry_long']) > ref_length:
             for trigger in self._triggers:
                 signal_triggers[trigger] = signal_triggers[trigger][:ref_length]
-
         signal_triggers_df = pd.DataFrame(signal_triggers, index=self.df.index[self.max_lookback:])
-        final_signal = pd.merge(
-            left=self.df,
-            right=signal_triggers_df,
-            how='left',
-            left_index=True,
-            right_index=True
-        )
-        final_signal.fillna(0, inplace=True)
-        return final_signal
+        if return_signal:
+            return self._merge_final_signal(signal_triggers_df)
+        else:
+            return signal_triggers_df
 
     def _remain_position(self, signal_triggers, days=1, position=None):
         """
@@ -642,7 +635,18 @@ class SignalGenerator():
             return most_freq_position
 
     def _reset_final_positions(self):
-        self.final_positions = self.max_lookback*[0]       
+        self.final_positions = self.max_lookback*[0]
+
+    def _merge_final_signal(self, signal_triggers_df):
+        final_signal = pd.merge(
+            left=self.df,
+            right=signal_triggers_df,
+            how='left',
+            left_index=True,
+            right_index=True
+        )
+        final_signal.fillna(0, inplace=True)
+        return final_signal   
 
 
 def triggers_to_states(df):

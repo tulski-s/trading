@@ -740,14 +740,20 @@ def test_results_with_load_rules(tmpdir, config_7, pricing_df3):
         df=pricing_df3,
         config=config_7,
     )
-    expected_results = sg.generate()
+    sg.generate()
     sg.save_rules_results(path=tmpdir)
-    sg_raw = SignalGenerator(
+    sg_loaded = SignalGenerator(
         df=pricing_df3,
         config=config_7,
         load_rules_results_path=tmpdir
     )
-    test_results = sg_raw.generate()
-    assert(triggers_to_states(expected_results) == triggers_to_states(test_results))
+    sg_loaded.generate()
+    same_results = []
+    for rule_id in sg.rules_results.keys():
+        if sg.rules_results[rule_id] == sg_loaded.rules_results[rule_id]:
+            same_results.append(True)
+        else:
+            same_results.append(False)
+    assert(all(same_results) == True)
 
 

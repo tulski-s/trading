@@ -119,6 +119,17 @@ class SignalGenerator():
             signal_triggers_df = self._generate_final_signal(initial_signal)
         final_signal = self._merge_final_signal(signal_triggers_df)
         final_signal.loc[:, 'position'] = self.final_positions
+        if self.config['strategy'].get('reversed', None):
+            # reverse all signals/positions
+            for col in self._triggers:
+                final_signal[f'copy_{col}'] = final_signal[col]
+            final_signal['entry_long'] = final_signal['copy_entry_short']
+            final_signal['exit_long'] = final_signal['copy_exit_short']
+            final_signal['entry_short'] = final_signal['copy_entry_long']
+            final_signal['exit_short'] = final_signal['copy_exit_long']
+            for col in self._triggers:
+                final_signal.drop(f'copy_{col}', axis=1, inplace=True)
+            final_signal['position'] = -1*final_signal['position']
         return final_signal
 
     def plot_strategy_result(self, df, price_label=None):

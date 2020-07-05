@@ -779,3 +779,25 @@ def test_positions_in_final_df(pricing_df2, config_2):
     test_positions = test_results['position'].tolist()
     expected_positions = [0, 0, 0, 1, 1, 1, 0, 0, -1, -1, -1, -1, 1]
     assert(test_positions == expected_positions)
+
+
+def test_reversed_strategy(pricing_df2, config_2):
+    sg_org = SignalGenerator(df=pricing_df2, config=config_2)
+    org_results = sg_org.generate()
+    config_2['strategy']['reversed'] = True
+    sg_rev = SignalGenerator(df=pricing_df2, config=config_2)
+    test_results = sg_rev.generate()
+    expected_results = []
+    for test, org in [
+        ('entry_long', 'entry_short'), ('entry_short', 'entry_long'),
+        ('exit_long', 'exit_short'), ('exit_short', 'exit_long')
+    ]:
+        if test_results[test].tolist() == org_results[org].tolist():
+            expected_results.append(True)
+        else:
+            expected_results.append(False)
+    if test_results['position'].tolist() == (-1*org_results['position']).tolist():
+        expected_results.append(True)
+    else:
+        expected_results.append(False)
+    assert(all(expected_results) == True)

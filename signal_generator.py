@@ -35,6 +35,8 @@ class SignalGenerator():
         # TODO(slaw) - would be good to have config validation here
         self.strategy_type = config['strategy']['type']
         self.strategy_rules = config['strategy']['strategy_rules']
+        if config['strategy'].get('strategy_id', None):
+            self.strategy_id = config['strategy']['strategy_id']
         if config['strategy'].get('constraints', None):
             self.wait_entry_confirmation = config['strategy']['constraints'].get('wait_entry_confirmation', None)
             self.hold_x_days = config['strategy']['constraints'].get('hold_x_days', None)
@@ -239,6 +241,7 @@ class SignalGenerator():
 
         No constraints are implemented here such just transformation is performed.
         """
+
         self._reset_final_positions()
         dates = self.df.index.tolist()
         triggers_dates = dates[self.max_lookback:]
@@ -646,6 +649,8 @@ class SignalGenerator():
             right_index=True
         )
         final_signal.fillna(0, inplace=True)
+        # truncate final_positions in case they are longer (can happen with e.g. strategy constraints)
+        self.final_positions = self.final_positions[:final_signal.shape[0]]
         return final_signal   
 
 

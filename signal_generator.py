@@ -120,7 +120,11 @@ class SignalGenerator():
         final_signal = self._merge_final_signal(signal_triggers_df)
         final_signal.loc[:, 'position'] = self.final_positions
         if self.config['strategy'].get('reversed', None):
-            # reverse all signals/positions
+            # reverse all simple and convoluted rules
+            for rule_id, rule_signal in self.rules_results.items():
+                inversed_signal = (-1 * np.array(self.rules_results[rule_id])).tolist()
+                self.rules_results[rule_id] = inversed_signal
+            # reverse all final signals/positions
             for col in self._triggers:
                 final_signal[f'copy_{col}'] = final_signal[col]
             final_signal['entry_long'] = final_signal['copy_entry_short']

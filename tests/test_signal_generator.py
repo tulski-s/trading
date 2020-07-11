@@ -801,3 +801,15 @@ def test_reversed_strategy(pricing_df2, config_2):
     else:
         expected_results.append(False)
     assert(all(expected_results) == True)
+
+
+def test_reversed_initial_signal(config_2, pricing_df2):
+    sg_org = SignalGenerator(df=pricing_df2, config=config_2)
+    org_results = sg_org.generate()
+    config_2['strategy']['reversed'] = True
+    sg_rev = SignalGenerator(df=pricing_df2, config=config_2)
+    test_results = sg_rev.generate()
+    expected_signals = (np.array(sg_org.rules_results['mock_rule'])*-1).tolist()
+    test_signals = sg_rev.rules_results['mock_rule']
+    assert(expected_signals == test_signals)
+

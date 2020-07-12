@@ -23,6 +23,7 @@ class NotAllRuleResultsPresentError(Exception):
 class SignalGenerator():
     def __init__(
         self, df=None, config=None, logger=None, debug=False, load_rules_results_path=None, load_rules_results_prefix='',
+        load_only_simple=False,
     ):
         self.log = setup_logging(logger=logger, debug=debug)
         self.config = config
@@ -105,6 +106,7 @@ class SignalGenerator():
         self._triggers = ('entry_long', 'exit_long', 'entry_short', 'exit_short')
         self.final_positions = self._reset_final_positions()
         # load stored rules results (to speed up execution)
+        self.load_only_simple = load_only_simple
         if load_rules_results_path:
             self._load_rules_results(load_rules_results_path, load_rules_results_prefix)
             self._rules_results_loaded = True
@@ -231,18 +233,22 @@ class SignalGenerator():
         """
         Loads saved (in `path`) rule results. All rules has to be present.
         """
-        rules_to_be_loaded = set(self.rules_results.keys())
+        if self.load_only_simple == False:
+            rules_to_be_loaded = set(self.rules_results.keys())
+        else:
+            rules_to_be_loaded = set([r['id'] for r in self.simple_rules])
         all_files = set([f for f in os.listdir(path)])
         rules_results = {}
         for rule_id in rules_to_be_loaded.copy():
             file_name = prefix+rule_id
             if file_name in all_files:
+                # will throw error if file with rule does not exists
                 with open(os.path.join(path, file_name), 'rb') as fh:
                     rules_results[rule_id] = pickle.load(fh)
                 rules_to_be_loaded.remove(rule_id)
         
         if len(rules_to_be_loaded) == 0:
-            self.rules_results = rules_results
+            self.rules_results.update(rules_results)
         else:
             raise NotAllRuleResultsPresentError(
                 f'Not all rules are present in {path}. Missing are: {rules_to_be_loaded}'
@@ -497,7 +503,7 @@ class SignalGenerator():
             review_span_tracker = self.init_review_span_tracker
         while idx < self.index:
             result_idx = idx-self.max_lookback
-            if not self._rules_results_loaded:
+            if self._rules_results_loaded == False:
                 # get and append results from simple rules
                 for simple_rule in self.simple_rules:
                     _hold_fixed_days = simple_rule.get('hold_fixed_days', None)
@@ -522,6 +528,7 @@ class SignalGenerator():
                                     (_hold_fixed_days-1)*[rule_res]
                                 )
                     self.rules_results[simple_rule['id']].append(rule_res)
+            if (self._rules_results_loaded == False) or (self.load_only_simple == True):
                 # get and append results from convoluted rules
                 for conv_rule in self.convoluted_rules:
                     simple_rules_results = self._get_simple_rules_results(

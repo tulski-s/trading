@@ -6,6 +6,7 @@ import pickle
 import numpy as np
 from numpy.testing import assert_array_equal
 import pandas as pd
+from pandas.testing import assert_frame_equal
 import pytest
 
 # custom
@@ -771,6 +772,40 @@ def test_results_with_load_rules(tmpdir, config_7, pricing_df3):
         else:
             same_results.append(False)
     assert(all(same_results) == True)
+
+
+def test_load_only_simple_rules(tmpdir, config_7, pricing_df3):
+    sg = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+    )
+    sg.generate()
+    sg.save_rules_results(path=tmpdir)
+    sg_loaded = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+        load_rules_results_path=tmpdir,
+        load_only_simple=True
+    )
+    initialy_no_convoluted_results = (sg_loaded.rules_results['conv'] == [])
+    assert(initialy_no_convoluted_results == True)
+
+
+def test_results_load_only_simple_rules(tmpdir, config_7, pricing_df3):
+    sg = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+    )
+    expected_df = sg.generate()
+    sg.save_rules_results(path=tmpdir)
+    sg_loaded = SignalGenerator(
+        df=pricing_df3,
+        config=config_7,
+        load_rules_results_path=tmpdir,
+        load_only_simple=True
+    )
+    test_df = sg_loaded.generate()
+    assert_frame_equal(expected_df, test_df)
 
 
 def test_positions_in_final_df(pricing_df2, config_2):

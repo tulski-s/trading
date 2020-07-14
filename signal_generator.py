@@ -82,15 +82,16 @@ class SignalGenerator():
             if rule['type'] == 'simple':
                 self.simple_rules.append(rule)
                 # store every rule timeseries as array and make sure all number of rows is equal
-                if isinstance(rule['ts'], str):
-                    if rule['ts'] not in self.data:
-                        self.data[rule['ts']] = df[rule['ts']].to_numpy()
-                        assert(self.data[rule['ts']].shape[0] == self.index)
-                elif isinstance(rule['ts'], list):
-                    for ts in rule['ts']:
-                        if ts not in self.data:
-                            self.data[ts] = df[ts].to_numpy()
-                            assert(self.data[ts].shape[0] == self.index)
+                if load_rules_results_path == None:
+                    if isinstance(rule['ts'], str):
+                        if rule['ts'] not in self.data:
+                            self.data[rule['ts']] = df[rule['ts']].to_numpy()
+                            assert(self.data[rule['ts']].shape[0] == self.index)
+                    elif isinstance(rule['ts'], list):
+                        for ts in rule['ts']:
+                            if ts not in self.data:
+                                self.data[ts] = df[ts].to_numpy()
+                                assert(self.data[ts].shape[0] == self.index)
                 # check max lookback. in 'generate' it will be starting point so all data is present
                 if self.max_lookback < rule['lookback']:
                     self.max_lookback = rule['lookback']

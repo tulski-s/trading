@@ -281,3 +281,84 @@ class Backtester():
             temp_df.drop('ds', axis=1, inplace=True)
             df = pd.concat([df, temp_df], axis=1)
         return df
+
+
+class SimpleBacktest():
+    def __init__(self, df=None, position_label='position', price_label='close', init_capital=10000):
+        """
+        Simplified version of Backtest. Requires only price and position labels in df. Does not handle
+        transaction costs, positions sizing bankruptcy etc Results from it will be too positive and not 
+        realizable in real life.
+
+        It is more efficient that Backtester though.
+        """
+        self.df = df.copy()
+        self.position_label = position_label
+        self.price_label = price_label
+        self.init_capital = init_capital
+    
+    def run(self):
+        self.df.loc[:, 'pct_change'] = self.df[self.price_label].pct_change()
+        self.df.loc[:, 'nav'] = self.init_capital * (
+            1 + ( self.df[self.position_label].shift(1) * self.df['pct_change'])
+        ).cumprod()
+
+        return self.df
+
+
+def test_backtest_normal_vs_simple():
+    import gpw_data
+    import position_size
+    import results
+    import rules
+    import signal_generator
+
+    test_config = {
+        'rules': [
+            {
+                'id': 'r1',
+                'type': 'simple',
+                'ts': 'adj_close',
+                'lookback': 28,
+                'params': {},
+                'func': rules.moving_average,
+            },
+        ],
+        'strategy': {
+            'type': 'fixed',
+            'strategy_rules': ['r1'],
+            'strategy_id': 'simple_test'
+        }
+    }
+
+    data_collector = gpw_data.GPWData()
+    symbol = 'CCC'
+    symbol_data = data_collector.load(symbols=symbol, from_csv=True, df=True)
+    symbol_data = data_collector.detrend(symbol_data)
+    
+    sg = signal_generator.SignalGenerator(
+        df = symbol_data,
+        config = test_config,
+    )
+    signals = sg.generate()
+    tester = Backtester(
+        {symbol: signals},
+        position_sizer=position_size.MaxFirstEncountered(fee_perc=0, min_fee=0),
+    )
+
+    tester_results, tester_trades = tester.run()
+    tester_results.loc[:, 'daily_returns'] = results.get_daily_returns(tester_results)
+    print('For standard tester, avg daily returns are: ', tester_results['daily_returns'].mean())
+    print(tester_results.tail(30))
+
+
+
+    simple_tester = SimpleBacktest(df=signals)
+    simple_tester_results = simple_tester.run()
+    simple_tester_results.loc[:, 'daily_returns'] = results.get_daily_returns(simple_tester_results)
+    print('For simplified tester, avg daily returns are: ', simple_tester_results['daily_returns'].mean())
+    print(simple_tester_results.tail(30))
+
+
+if __name__ == '__main__':
+    main()

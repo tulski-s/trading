@@ -50,10 +50,10 @@ def evaluate(results_df, trades):
     # Annualized Sharpe Ratio
     risk_free_rate = 0.02
     sessions_per_year = 252
-    excess_returns = df['daily_returns'] - 0.02/252
+    excess_returns = df['daily_returns'] - risk_free_rate/sessions_per_year
     mean_er = excess_returns.mean()
     std_dev_er = excess_returns.std()
-    annualized_sharpe_ratio=(252**.5)*mean_er/std_dev_er
+    annualized_sharpe_ratio=(sessions_per_year**.5)*mean_er/std_dev_er
 
     # Maximum Drowndown
     df.loc[:, 'highwatermark'] = df['rate_of_return'].cummax()

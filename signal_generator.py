@@ -64,11 +64,14 @@ class SignalGenerator():
                     'Strategy review_span has to be smaller than memory_span'
                 )
             # calculate daily returns used by most of learning performance metrics
-            self.df.loc[:, 'prev_price__learning'] = df[self.strategy_price_label].shift(1)
-            self.df.loc[:, 'daily_returns__learning'] = df[self.strategy_price_label].pct_change()
-            self.df.loc[:, 'daily_log_returns__learning'] = (
-                np.log(df[self.strategy_price_label]) - df['prev_price__learning']
-            )
+            if self.strategy_metric == 'daily_returns':
+                self.daily_returns__learning = df[self.strategy_price_label].pct_change().tolist()
+            elif self.strategy_metric in ('avg_log_returns', 'avg_log_returns_held_only'):
+                self.daily_log_returns__learning = (
+                    np.log(df[self.strategy_price_label]) - df[self.strategy_price_label].shift(1)
+                ).tolist()
+
+
         self.hold_x_days_rule_lvl = {}
         self.init_review_span_tracker = 0
         self.max_lookback = 0
@@ -491,6 +494,7 @@ class SignalGenerator():
         if self.strategy_type == 'learning':
             if self.strategy_metric == 'voting':
                 follow = {'_type': 'position'}
+            # else:
             else:
                 follow = {'_type': 'rule'}
             _is_tmp_review_span = False
@@ -605,46 +609,54 @@ class SignalGenerator():
         df_start_idx = strat_idx+self.max_lookback
         df_end_idx = end_idx+self.max_lookback
         # for each rule and appropriate indices: calculate and store performance metric(s)
+
+        cur_res = {}
+        _best_rule = [(-9999999, None)]
         for rule_id in self.strategy_rules:
             # get given rules signals
-            rule_signals = np.array(self.rules_results[rule_id][strat_idx:end_idx])
+            rule_signals = self.rules_results[rule_id][strat_idx:end_idx]
             # calculate performance metric against signals
             if self.strategy_metric == 'daily_returns':
-                daily_returns = np.array(self.df['daily_returns__learning'][df_start_idx:df_end_idx])
-                metric = sum(daily_returns * rule_signals)
+                daily_returns = self.daily_returns__learning[df_start_idx:df_end_idx]
+                metric = sum([ret*sig for ret,sig in zip(daily_returns, rule_signals)])
             elif self.strategy_metric == 'avg_log_returns':
-                daily_log_returns = np.array(self.df['daily_log_returns__learning'][df_start_idx:df_end_idx])
-                metric = np.average(daily_log_returns * rule_signals)
+                daily_log_returns = self.daily_log_returns__learning[df_start_idx:df_end_idx]
+                _realized_rets = [ret*sig for ret,sig in zip(daily_log_returns, rule_signals)]
+                metric = sum(_realized_rets) / len(_realized_rets)
             elif self.strategy_metric == 'avg_log_returns_held_only':
-                daily_log_returns = np.array(self.df['daily_log_returns__learning'][df_start_idx:df_end_idx])
-                daily_log_returns_from_positions = daily_log_returns * rule_signals
-                metric = np.average(daily_log_returns_from_positions[daily_log_returns_from_positions != 0])
+                daily_log_returns = self.daily_log_returns__learning[df_start_idx:df_end_idx]
+                _realized_rets_pos = [ret*sig for ret,sig in zip(daily_log_returns, rule_signals) if sig != 0]
+                try:
+                    metric = sum(_realized_rets_pos) / len(_realized_rets_pos)
+                except ZeroDivisionError:
+                    metric = 0
             elif self.strategy_metric == 'voting':
                 metric = (
-                    sum(rule_signals == -1),
-                    sum(rule_signals == 0),
-                    sum(rule_signals == 1),
+                    rule_signals.count(-1),
+                    rule_signals.count(0),
+                    rule_signals.count(1),
                 )
             self.past_reviews[rule_id].append(metric)
-        # get current review results
-        review_idx = len(self.past_reviews[self.strategy_rules[0]]) - 1
-        cur_res = {
-            rule_id: metric_vals[review_idx] for rule_id, metric_vals in self.past_reviews.items()
-        }
-        # define best performing rule. if tie - use the one with better historical performance
+            cur_res[rule_id] = metric
+            # for non voting strategies find best performing rule(s) already in loop
+            if self.strategy_metric != 'voting':
+                if metric > _best_rule[0][0]:
+                    _best_rule = [(metric, rule_id)]
+                elif metric == _best_rule[0][0]:
+                    _best_rule.append((metric, rule_id))
+        # get best historical results in case many rules have the same (best) result
         if self.strategy_metric != 'voting':
-            cur_best_rule, cur_best_val = max([(k,v) for k,v in cur_res.items()], key=lambda x: x[1])
-            if list(cur_res.values()).count(cur_best_val) > 1:
-                # calculate historical performance
-                all_best_rules = [r for r, v in cur_res.items() if v == cur_best_val]
-                avg_metric_res = [
-                    (rule_id, np.average(self.past_reviews[rule_id]))
-                    for rule_id in all_best_rules
-                ]
-                # overwrite best rule. in case historical average is the same for some rules - just choose
-                # first (that is achieved via "max" which choose first max value occured in list)
-                cur_best_rule = max(avg_metric_res, key=lambda x: x[1])[0]
-            return cur_best_rule
+            if len(_best_rule) > 1:
+                _best_hist = (
+                    sum(self.past_reviews[_best_rule[0][1]])/len(self.past_reviews[_best_rule[0][1]]),
+                    _best_rule[0][1]
+                )
+                for _, rule_id in _best_rule[1:]:
+                    hist_perf = sum(self.past_reviews[rule_id])/len(self.past_reviews[rule_id])
+                    if hist_perf > _best_hist[0]:
+                        _best_hist = (hist_perf, rule_id)
+                return _best_hist[1]
+            return _best_rule[0][1]
         # in case of 'voting' - define most freqeunt position by counting results from all the rules signals
         else:
             positions_counts = {p: 0 for p in (-1,0,1)}

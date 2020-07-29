@@ -536,11 +536,18 @@ def test_generate_final_signal_with_both_constraints(pricing_df1, config_6):
 
 
 def test_review_performance_daily_returns(pricing_df3, config_7):
+    config_7['strategy']['type'] = 'learning'
+    config_7['strategy']['params'] = {
+        'performance_metric': 'daily_returns',
+        'price_label': 'close',
+        'review_span': 1,  # not relevant for test but mandatory param
+        'memory_span': 2,  # not relevant for test but mandatory param
+    }
     sg = SignalGenerator(df=pricing_df3, config=config_7)
     sg._generate_initial_signal()
     # need to set up some values which would be there if "learning" strategy in config
     sg.past_reviews = {rule_id: [] for rule_id in sg.strategy_rules}
-    sg.strategy_metric = 'daily_returns'
+    # sg.strategy_metric = 'daily_returns'
     sg.df.loc[:, 'daily_returns__learning'] = sg.df['close'].pct_change()
     sg._review_performance(strat_idx=3, end_idx=8)
     expected_conv = 0.073809

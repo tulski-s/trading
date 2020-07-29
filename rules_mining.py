@@ -1,10 +1,13 @@
-#built-in
+# built-in
+import math
 import random
+import time
+
+# 3rd party
+import numpy as np
 
 # custom
 import backtester
-
-# import commons
 import gpw_data
 import position_size
 import results
@@ -37,38 +40,44 @@ def pval_msg(pval):
 
 def create_wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_samples=5000):
     """
-    Creates sampling distribution for White's Reality Check (bootrap method for many trading rules to avoid data-mining bias)
     Input: dict with rule_names and DataFrame with daily returns column present
+
+    TODO - it needs to be optimized. Very slow with bigger inputs. Accessing random 
+    indicies (results[random_idxs]) with big input (e.g. 2000, 60000) takes ~3s. This will 
+    be multiplied by no_samples...
     """
-    lengths = [df.shape[0] for df in rules_results.values()]
-    same_lengths_assertion(lengths)
+    # perepare data
+    lengths = []
+    results = []
     for df in rules_results.values():
-        # shift daily returns so that each rule avg. return is equal to 0
-        mean_ret = df[daily_ret_col].mean()
-        df.loc[:, 'shifted_daily_returns'] = df[daily_ret_col] - mean_ret
-        df.fillna(value={'shifted_daily_returns':0}, inplace=True)
+        rets = df[daily_ret_col].tolist()
+        results.append(rets)
+        lengths.append(len(rets))
+    same_lengths_assertion(lengths)
+    results = np.array(results).T
+    results = np.nan_to_num(results, nan=0)
+    # center returns
+    avgs = results.mean(axis=0)
+    results = results - avgs
+    # get wrc sampling dist
     sample_size = lengths[0]
+    sample_idxs = np.array(range(sample_size))
     max_avg_rets = []
     for k in range(no_samples):
-        sample_idxs = list(range(sample_size))
-        random_idxs = [random.choice(sample_idxs) for _ in sample_idxs]
-        avg_rets = []
-        for df in rules_results.values():
-            avg_rets.append(
-                df['shifted_daily_returns'].iloc[random_idxs].mean()
-            )
-        max_avg_rets.append(max(avg_rets))
+        # random sampling with replacement
+        random_idxs = np.random.choice(sample_idxs, size=sample_size, replace=True)
+        max_avg_rets.append(results[random_idxs].mean(axis=0).max())
     return max_avg_rets
 
 
-def create_mc_sampling_distr(rules_results, states_col='position_states', price_col='actual_price_change', no_samples=5000):
+def create_mc_sampling_distr(rules_states, price_changes, no_samples=5000):
     """
     Creates sampling distribution for the Monte Carlo method. This sampling distribution represent expected return of
     useless (random) rule. In high level it is done via random assignment of rule's values to market returns.
     MC's NULL hypothesis is simply that all rules tested have output values that are randomly correlated with future
     marrket behaviour.
 
-    Input: dict with rule_names and DataFrame with actual price change and rules states columns present
+    Input: dict with rule_names and positions as np.arrays. Also np.array with actual price change
 
     Method:
     - obtian daily rule output states (-1,1 or -1,0,1)
@@ -78,21 +87,14 @@ def create_mc_sampling_distr(rules_results, states_col='position_states', price_
     - determine mean rate of return for each rule (avg daily returns)
     - select highest mean return as entry for sampling distribution
     """
-    lengths = [df.shape[0] for df in rules_results.values()]
+    lengths = [len(positions) for positions in rules_states.values()]
     same_lengths_assertion(lengths)
-    # actual price changes will be the same for all rules, so just take any
-    changes_org = rules_results[list(rules_results.keys())[0]][price_col].tolist()
+    assert(lengths[0] == len(price_changes))
+
     max_avg_rets = []
     for k in range(no_samples):
-        changes = changes_org.copy()
-        random.shuffle(changes)
-        avg_rets = []
-        for df in rules_results.values():
-            states = df[states_col].tolist()
-            returns = [x*y for x, y in zip(states, changes)]
-            avg_rets.append(
-                sum(returns)/len(returns)
-            )
+        changes = np.random.choice(price_changes, size=len(price_changes), replace=False)
+        avg_rets = [(states*changes).mean() for states in rules_states.values()]
         max_avg_rets.append(max(avg_rets))
     return max_avg_rets
 
@@ -159,12 +161,14 @@ def main():
     symbol_data = data_collector.load(symbols=symbol, from_csv=True, df=True)
     symbol_data = data_collector.detrend(symbol_data)
     rules_signals = {}
+    rules_states = {}
     for rc in rules_configs:
         sg = signal_generator.SignalGenerator(
             df = symbol_data,
             config = rc[1],
         )
         rules_signals[rc[0]] = sg.generate()
+        rules_states[rc[0]] = np.array(sg.final_positions)
 
     # backtest data
     print('backtesting data')
@@ -179,7 +183,6 @@ def main():
         tester_results, tester_trades = tester.run()
         tester_results.loc[:, 'daily_returns'] = results.get_daily_returns(tester_results)
         tester_results.loc[:, 'actual_price_change'] = results.get_price_change(rs_signal)
-        tester_results.loc[:, 'position_states'] = signal_generator.triggers_to_states(rs_signal)
         rules_results[rs_name] = tester_results
 
     avg_daily_returns = {r: df['daily_returns'].mean() for r, df in rules_results.items()}
@@ -194,7 +197,10 @@ def main():
     # White's Reality Check
     print("     #### White's Reality Check")
     # create sampling distribution (small amount of samples just to make it faster)
-    wrc_sampling_dist = create_wrc_sampling_dist(rules_results, no_samples=500)
+    t1 = time.time()
+    wrc_sampling_dist = create_wrc_sampling_dist_vect(rules_results, no_samples=10000)
+    t2 = time.time()
+    print(f'Whites Reality Check took: {round(t2-t1, 2)} seconds')
     # find p-val and asses statistical significancee
     wrc_exceeds_observed = [x for x in wrc_sampling_dist if x >= highest_daily_ret]
     wrc_pval = len(wrc_exceeds_observed)/len(wrc_sampling_dist)
@@ -204,7 +210,11 @@ def main():
     # Monte Carlo simulation
     print("     #### Monte Carlo simulation")
     # create sampling distr for Monte Carlo. again just small sample size to make it faster
-    mc_sampling_dist = create_mc_sampling_distr(rules_results, no_samples=500)
+    price_changes = rules_results[list(rules_results.keys())[0]]['actual_price_change'].to_numpy()
+    t3 = time.time()
+    mc_sampling_dist = create_mc_sampling_distr(rules_states, price_changes, no_samples=10000)
+    t4 = time.time()
+    print(f'Monte Carlo took: {round(t4-t3, 2)} seconds')
     mc_exceeds_observed = [x for x in mc_sampling_dist if x >= highest_daily_ret]
     mc_pval = len(mc_exceeds_observed)/len(mc_sampling_dist)
     print(f'p-val for MC is {mc_pval}')
@@ -213,4 +223,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-

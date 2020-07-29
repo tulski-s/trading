@@ -302,8 +302,7 @@ class SimpleBacktest():
         self.df.loc[:, 'nav'] = self.init_capital * (
             1 + ( self.df[self.position_label].shift(1) * self.df['pct_change'])
         ).cumprod()
-
-        return self.df
+        return self.df[['nav']]
 
 
 def test_backtest_normal_vs_simple():
@@ -361,4 +360,4 @@ def test_backtest_normal_vs_simple():
 
 
 if __name__ == '__main__':
-    main()
+    test_backtest_normal_vs_simple()

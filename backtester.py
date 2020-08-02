@@ -302,6 +302,10 @@ class SimpleBacktest():
         self.df.loc[:, 'nav'] = self.init_capital * (
             1 + ( self.df[self.position_label].shift(1) * self.df['pct_change'])
         ).cumprod()
+        if any(self.df['nav']) < 0:
+            raise AccountBankruptError(
+                    "Account bankrupted! SimpleBacktest encountered negative Net Account Value"
+                )
         return self.df[['nav']]
 
 

@@ -38,13 +38,9 @@ def pval_msg(pval):
         print(f'Rule has no predictive power')
 
 
-def create_wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_samples=5000):
+def create_wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_samples=5000, batch=64):
     """
     Input: dict with rule_names and DataFrame with daily returns column present
-
-    TODO - it needs to be optimized. Very slow with bigger inputs. Accessing random 
-    indicies (results[random_idxs]) with big input (e.g. 2000, 60000) takes ~3s. This will 
-    be multiplied by no_samples...
     """
     # perepare data
     lengths = []
@@ -66,7 +62,8 @@ def create_wrc_sampling_dist(rules_results, daily_ret_col='daily_returns', no_sa
     for k in range(no_samples):
         # random sampling with replacement
         random_idxs = np.random.choice(sample_idxs, size=sample_size, replace=True)
-        max_avg_rets.append(results[random_idxs].mean(axis=0).max())
+        max_avg = max(results[random_idxs,i:i+batch].mean(axis=0).max() for i in range(0, results.shape[1], batch))
+        max_avg_rets.append(max_avg)
     return max_avg_rets
 
 
@@ -198,7 +195,7 @@ def main():
     print("     #### White's Reality Check")
     # create sampling distribution (small amount of samples just to make it faster)
     t1 = time.time()
-    wrc_sampling_dist = create_wrc_sampling_dist_vect(rules_results, no_samples=10000)
+    wrc_sampling_dist = create_wrc_sampling_dist(rules_results, no_samples=10000)
     t2 = time.time()
     print(f'Whites Reality Check took: {round(t2-t1, 2)} seconds')
     # find p-val and asses statistical significancee

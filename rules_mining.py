@@ -74,7 +74,9 @@ def create_mc_sampling_distr(rules_states, price_changes, no_samples=5000):
     MC's NULL hypothesis is simply that all rules tested have output values that are randomly correlated with future
     marrket behaviour.
 
-    Input: dict with rule_names and positions as np.arrays. Also np.array with actual price change
+    Input: 
+        `rules_states` is np.array with rule states (-1,0,1)
+        `price_changes` is np.array with percentage change of actual prices
 
     Method:
     - obtian daily rule output states (-1,1 or -1,0,1)

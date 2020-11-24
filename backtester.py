@@ -12,20 +12,25 @@ class AccountBankruptError(Exception):
 
 class Backtester():
     def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False, 
-                 position_sizer=None, stop_loss=False):
+                 position_sizer=None, stop_loss=False, auto_stop_loss=False):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
         be bianries (0,1). If strategy is long/short only just insert 0 for the column.
 
-        *price_label* - column name for the price which should be used in backtest
+        *price_label*
+            column name for the price which should be used in backtest
+        *auto_stop_loss*
+            automatically overwrites signals by setting % moving stop loss. should be double 
+            (e.g. 0.01 fo 1%)
         """
-        self.log = setup_logging(logger=logger, debug=debug)
-        self.signals = self._prepare_signal(signals)
         self.position_sizer = position_sizer
         self.price_label = price_label
         self.init_capital = init_capital
         self.stop_loss = stop_loss
+        self.auto_stop_loss = auto_stop_loss
+        self.log = setup_logging(logger=logger, debug=debug)
+        self.signals = self._prepare_signal(signals)
 
     def run(self, test_days=None):
         self._reset_backtest_state()
@@ -41,10 +46,12 @@ class Backtester():
                     symbols_in_day[ds].append(sym_n)
                 else:
                     symbols_in_day[ds] = [sym_n]
-        days = sorted(symbols_in_day.keys())
+        org_days = sorted(symbols_in_day.keys())
         
         if test_days:
-            days = days[:test_days]
+            days = org_days[:test_days]
+        else:
+            days = org_days
 
         for idx, ds in enumerate(days):
             self.log.debug('['+15*'-'+str(ds)[0:10]+15*'-'+']')
@@ -67,19 +74,24 @@ class Backtester():
                 self.log.debug('\t+ Checking exit signal for: ' + symbol)
                 if self.signals[symbol]['exit_long'][ds] == 1:
                     self.log.debug('\t\t EXIT LONG')
-                    self._sell(symbol, current_sym_prices, ds, 'long')
+                    self._sell(symbol, current_sym_prices[ds], ds, 'long')
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     self.log.debug('\t\t EXIT SHORT')
-                    self._sell(symbol, current_sym_prices, ds, 'short')
-                elif self.stop_loss == True:
+                    self._sell(symbol, current_sym_prices[ds], ds, 'short')
+                elif (self.stop_loss == True) or (self.auto_stop_loss != False):
                     stop_loss_price = self.signals[symbol]['stop_loss'][ds]
-                    trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type'] 
+                    trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type']
+                    is_sl_triggered = 0
                     if (trade_type == 'long') and (current_sym_prices[ds] <= stop_loss_price):
                         self.log.debug('\t\t LONG STOP LOSS TRIGGERED - EXITING')
-                        self._sell(symbol, current_sym_prices, ds, 'long')
+                        self._sell(symbol, stop_loss_price, ds, 'long')
+                        is_sl_triggered = 1
                     elif (trade_type == 'short') and (current_sym_prices[ds] >= stop_loss_price):
                         self.log.debug('\t\t SHORT STOP LOSS TRIGGERED - EXITING')
-                        self._sell(symbol, current_sym_prices, ds, 'short')
+                        self._sell(symbol, stop_loss_price, ds, 'short')
+                        is_sl_triggered = 1
+                    if is_sl_triggered == 1:
+                        self._auto_stop_loss_tracker.pop(symbol, None)
                 else:
                     self.log.debug('\t+ Not exiting from: ' + symbol)
             
@@ -108,24 +120,34 @@ class Backtester():
                 purchease_candidates,
                 capital = capital_at_time
             )
-
             for trx_details in symbols_to_buy:
                 self._buy(trx_details, ds)
             self.log.debug('\t[--  BUY END --]')
-
+            # update auto_stop_loss for owned shares. it will be applied to existing day+1 based on data from day
+            if self.auto_stop_loss != False:
+                for symbol in list(self._owned_shares.keys()):
+                    try:
+                        self._update_auto_stop_loss(
+                            symbol, self.signals[symbol][self.price_label][ds], ds, org_days[idx+1]
+                        )
+                    except IndexError:
+                        print('Index error LOL')
+                        pass
             self._summarize_day(ds)
-
         return self._run_output(), self._trades
 
     def _prepare_signal(self, signals):
         """Converts to expected dictionary form."""
         _signals = signals.copy()
-        for k, v in signals.items():
-            _signals[k] = v.to_dict()
+        for k, df in signals.items():
+            # initialize stop_loss column if needed
+            if 'stop_loss' not in df.columns:
+                df.loc[:, 'stop_loss'] = None            
+            _signals[k] = df.to_dict()
         return _signals
 
     def _reset_backtest_state(self):
-        """Resets all attributes used during backtest run."""
+        """Resets/Initializes all attributes used during backtest run."""
         self._owned_shares = {}
         self._available_money = self.init_capital
         self._money_from_short = {}
@@ -134,10 +156,10 @@ class Backtester():
         self._net_account_value = {}
         self._rate_of_return = {}
         self._backup_prices = {}
+        self._auto_stop_loss_tracker = {}
 
-    def _sell(self, symbol, prices, ds, exit_type):
+    def _sell(self, symbol, price, ds, exit_type):
         """Selling procedure"""
-        price = prices[ds]
         shares_count = self._owned_shares[symbol]['cnt']
         fee = self.position_sizer.calculate_fee(abs(shares_count)*price)
         trx_value = (abs(shares_count)*price)
@@ -218,17 +240,29 @@ class Backtester():
             self.log.debug('\t\tMoney from short sell: ' + str(self._money_from_short[trx_id]))
 
     def _define_candidate(self, symbol, ds, entry_type):
-        """Reutrns dictionary with purchease candidates and necessery keys."""
-        if self.signals[symbol].get('stop_loss', None):
-            stop_loss = self.signals[symbol]['stop_loss'][ds]
+        """
+        Reutrns dictionary with purchease candidates and necessery keys.
+        Handles setting up value for auto_stop_loss.
+        """
+        price = self.signals[symbol][self.price_label][ds]
+        if self.auto_stop_loss != False:
+            stop_loss = self._calc_auto_sl(price, entry_type)
+        elif self.stop_loss:
+            stop_loss = self.signals[symbol].get('stop_loss', None)      
         else:
             stop_loss = None
         return {
             'symbol': symbol,
             'entry_type': entry_type,
-            'price': self.signals[symbol][self.price_label][ds],
+            'price': price,
             'stop_loss': stop_loss
         }
+
+    def _calc_auto_sl(self, price, entry_type):
+        if entry_type == 'long':
+            return price - (price*self.auto_stop_loss)
+        elif entry_type == 'short':
+            return price + (price*self.auto_stop_loss)
 
     def _calculate_account_value(self, ds, print_err_msg=True):
         _account_value = 0
@@ -249,6 +283,23 @@ class Backtester():
 
     def _get_money_from_short(self):
         return sum([m for m in self._money_from_short.values()])
+
+    def _update_auto_stop_loss(self, symbol, price, cur_ds, next_ds):
+        """
+        curr_sl_ref_price is the price from which actual SL was calculated. It's not SL itself.
+        Also, note that SL is set up for ds+1 day.
+        """
+        if self._owned_shares[symbol]['cnt'] > 0:
+            entry_type = 'long'
+        else:
+            entry_type = 'short'
+        curr_sl_ref_price = self._auto_stop_loss_tracker.get(symbol, 0)
+        if price > curr_sl_ref_price:
+            self._auto_stop_loss_tracker[symbol] = price
+            stop_loss = self._calc_auto_sl(price, entry_type)
+        else:
+            stop_loss = self.signals[symbol]['stop_loss'][cur_ds]
+        self.signals[symbol]['stop_loss'][next_ds] = stop_loss
 
     def _summarize_day(self, ds):
         """Sets up summaries after finished session day."""

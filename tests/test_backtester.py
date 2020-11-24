@@ -151,6 +151,27 @@ def signals_test_stop_loss_1():
     return {'TEST_SL_1': pd.DataFrame(signals_data, index=pd.DatetimeIndex(dates))}
 
 
+def signals_test_auto_stop_loss_1():
+    """
+    Creates signals with one symbol 'TEST_SIGS_1' and following data:
+    date           close    entry_long  exit_long  entry_short  exit_short
+    2010-09-28       100         1          0            0           0
+    2010-09-29        81         0          0            0           0
+    2010-09-30       120         0          0            0           0
+    2010-10-01        81         0          0            0           0
+    2010-10-02        50         0          1            0           0
+    """
+    dates = ['2010-09-28', '2010-09-29', '2010-09-30', '2010-10-01', '2010-10-02']
+    signals_data = {
+        'close': [100, 81, 120, 81, 50],
+        'entry_long': [1,0,0,0,0],
+        'exit_long': [0,0,0,0,1],
+        'entry_short': [0,0,0,0,0],
+        'exit_short': [0,0,0,0,0],
+    }
+    return {'TEST_ASL_1': pd.DataFrame(signals_data, index=pd.DatetimeIndex(dates))}
+
+
 def signals_test_long_short_same():
     dates = ['2019-01-01', '2019-01-02']
     signals_data = {
@@ -190,13 +211,26 @@ def backtester(request):
 @pytest.fixture(params=['signals', 'position_sizer', 'init_capital'])
 def backtester_sl(request):
     """
-    Creates backtester object with given signals, position_sizer and initial capital
+    Creates backtester object with given signals, position_sizer and initial capital. Stop loss enabled.
     """
     return Backtester(
         request.param[0], 
         position_sizer=request.param[1],
         init_capital=request.param[2],
         stop_loss=True,
+    )
+
+
+@pytest.fixture(params=['signals', 'position_sizer', 'init_capital', 'auto_stop_loss'])
+def backtester_auto_sl(request):
+    """
+    Creates backtester object with given signals, position_sizer and initial capital. Auto stop loss enabled.
+    """
+    return Backtester(
+        request.param[0], 
+        position_sizer=request.param[1],
+        init_capital=request.param[2],
+        auto_stop_loss=request.param[3],
     )
 
 
@@ -628,8 +662,8 @@ def test_functional_backtester_2_days_TEST_SL_1(backtester_sl):
 
 @pytest.mark.parametrize('backtester_sl', [(signals_test_stop_loss_1(), max_first_encountered_alpha_sizer(), 500)], indirect=True)
 def test_functional_backtester_3_days_TEST_SL_1(backtester_sl):
-    expected_available_money = 412
-    expected_nav = 412
+    expected_available_money = 432
+    expected_nav = 432
     results, trades = backtester_sl.run(test_days=3)
     ds_key = pd.Timestamp('2010-09-30')
     expected_trades = {
@@ -639,9 +673,9 @@ def test_functional_backtester_3_days_TEST_SL_1(backtester_sl):
             'trx_value_no_fee': 400,
             'trx_value_with_fee': 404,
             'sell_ds': ds_key,
-            'sell_value_no_fee': 320,
-            'sell_value_with_fee': 316,
-            'profit': -88,
+            'sell_value_no_fee': 340,
+            'sell_value_with_fee': 336,
+            'profit': -68,
         },
     } 
     assert(backtester_sl._available_money == expected_available_money)
@@ -653,3 +687,45 @@ def test_functional_backtester_3_days_TEST_SL_1(backtester_sl):
 def test_long_and_short_same_symbol(backtester):
     with pytest.raises(ValueError):
         results, trades = backtester.run(test_days=2)
+
+
+@pytest.mark.parametrize(
+    'backtester_auto_sl',
+    [(signals_test_auto_stop_loss_1(), max_first_encountered_alpha_sizer(), 1000, 0.2)],
+    indirect=True
+)
+def test_functional_backtester_auto_stop_loss_1(backtester_auto_sl):
+    results, trades = backtester_auto_sl.run(test_days=3)
+    ds_1 = pd.Timestamp('2010-09-29')
+    ds_2 = pd.Timestamp('2010-10-01')
+    assert(backtester_auto_sl._auto_stop_loss_tracker['TEST_ASL_1'] == 120.0)
+    assert(backtester_auto_sl.signals['TEST_ASL_1']['stop_loss'][ds_1] == 80)
+    assert(backtester_auto_sl.signals['TEST_ASL_1']['stop_loss'][ds_2] == 96) 
+
+
+@pytest.mark.parametrize(
+    'backtester_auto_sl',
+    [(signals_test_auto_stop_loss_1(), max_first_encountered_alpha_sizer(), 500, 0.2)],
+    indirect=True
+)
+def test_functional_backtester_auto_stop_loss_2(backtester_auto_sl):
+    expected_available_money = 476
+    expected_nav = 476
+    results, trades = backtester_auto_sl.run()
+    ds_key = pd.Timestamp('2010-10-01')
+    expected_trades = {
+        '2010-09-28_TEST_ASL_1_long': {
+            'buy_ds': pd.Timestamp('2010-09-28'),
+            'type': 'long',
+            'trx_value_no_fee': 400,
+            'trx_value_with_fee': 404,
+            'sell_ds': ds_key,
+            'sell_value_no_fee': 384,
+            'sell_value_with_fee': 380,
+            'profit': -24,
+        },
+    }
+    assert(backtester_auto_sl._available_money == expected_available_money)
+    assert(backtester_auto_sl._net_account_value[ds_key] == expected_nav)
+    assert(expected_trades == trades)
+

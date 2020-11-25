@@ -7,6 +7,7 @@ from position_size import (
     FixedCapitalPerc,
     MaxFirstEncountered,
     PercentageRisk,
+    FixedRisk,
 )
 
 
@@ -77,6 +78,18 @@ def test_sorting_cheapest(candidates_10):
     expected_symbols_order_v1 = ['c10', 'c9', 'c1', 'c8', 'c2', 'c7', 'c3', 'c6', 'c4', 'c5']
     expected_symbols_order_v2 = ['c10', 'c9', 'c8', 'c9', 'c2', 'c7', 'c3', 'c6', 'c4', 'c5']
     assert(sorted_candidates in [expected_symbols_order_v1, expected_symbols_order_v2])
+
+
+def test_sorting_volatility_highest(candidates_3):
+    volatility = {
+        'c1': 1, 'c2':7, 'c3': 3
+    }
+    sorted_candidates = [
+        x['symbol'] for x in MaxFirstEncountered(sort_type='volatility_highest').sort(
+            candidates_3, volatility=volatility
+        )
+    ]
+    assert(sorted_candidates == ['c2', 'c3', 'c1'])
 
 
 def test_decide_what_to_buy_1_can(candidates_1):
@@ -163,3 +176,58 @@ def test_decide_what_to_buy_missing_sl_when_its_mandatory(candidates_1):
 def test_decide_what_to_buy_missing_sl_as_nan(candidates_1_nan_sl):
     with pytest.raises(ValueError):
         symbols_to_buy = PercentageRisk().decide_what_to_buy(1, candidates_1_nan_sl, capital=2)
+
+
+def test_decide_what_to_buy_FixedRisk_1(candidates_3_stop_loss):
+    sizer = FixedRisk(
+        fee_perc=0, min_fee=6, sort_type='alphabetically', risk_per_trade=100
+    )
+    symbols_to_buy = sizer.decide_what_to_buy(10000, candidates_3_stop_loss)
+    expected_symbols_to_buy = [
+        {
+            'symbol': 'c1',
+            'entry_type': 'long',
+            'shares_count': 9,
+            'price': 111,
+            'trx_value': 999,
+            'fee': 6
+        },
+        {
+            'symbol': 'c2',
+            'entry_type': 'short',
+            'shares_count': 4,
+            'price': 103,
+            'trx_value': 412,
+            'fee': 6
+        },
+    ]
+    assert(symbols_to_buy == expected_symbols_to_buy)
+
+
+def test_decide_what_to_buy_FixedRisk_2(candidates_3_stop_loss):
+    sizer = FixedRisk(
+        fee_perc=0, min_fee=6, sort_type='rrr', risk_per_trade=100
+    )
+    volatility = {
+        'c1': 6, 'c2': 17, 'c3': 3
+    }
+    symbols_to_buy = sizer.decide_what_to_buy(10125, candidates_3_stop_loss, volatility=volatility)
+    expected_symbols_to_buy = [
+        {
+            'symbol': 'c3',
+            'entry_type': 'long',
+            'shares_count': 50,
+            'price': 194,
+            'trx_value': 9700,
+            'fee': 6
+        },
+        {
+            'symbol': 'c2',
+            'entry_type': 'short',
+            'shares_count': 4,
+            'price': 103,
+            'trx_value': 412,
+            'fee': 6
+        },
+    ]
+    assert(symbols_to_buy == expected_symbols_to_buy)

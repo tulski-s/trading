@@ -12,7 +12,7 @@ class AccountBankruptError(Exception):
 
 class Backtester():
     def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False, 
-                 position_sizer=None, stop_loss=False, auto_stop_loss=False):
+                 position_sizer=None, stop_loss=False, auto_stop_loss=False, volatility_lb=14):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
@@ -29,6 +29,7 @@ class Backtester():
         self.init_capital = init_capital
         self.stop_loss = stop_loss
         self.auto_stop_loss = auto_stop_loss
+        self.volatility_lb = volatility_lb
         self.log = setup_logging(logger=logger, debug=debug)
         self.signals = self._prepare_signal(signals)
 
@@ -70,23 +71,23 @@ class Backtester():
                 # safe check if missing ds for given owned symbol
                 if not symbol in symbols_in_day[ds]:
                     continue
-                current_sym_prices = self.signals[symbol][self.price_label]
+                current_sym_price = self._get_price(symbol, ds)
                 self.log.debug('\t+ Checking exit signal for: ' + symbol)
                 if self.signals[symbol]['exit_long'][ds] == 1:
                     self.log.debug('\t\t EXIT LONG')
-                    self._sell(symbol, current_sym_prices[ds], ds, 'long')
+                    self._sell(symbol, current_sym_price, ds, 'long')
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     self.log.debug('\t\t EXIT SHORT')
-                    self._sell(symbol, current_sym_prices[ds], ds, 'short')
+                    self._sell(symbol, current_sym_price, ds, 'short')
                 elif (self.stop_loss == True) or (self.auto_stop_loss != False):
                     stop_loss_price = self.signals[symbol]['stop_loss'][ds]
                     trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type']
                     is_sl_triggered = 0
-                    if (trade_type == 'long') and (current_sym_prices[ds] <= stop_loss_price):
+                    if (trade_type == 'long') and (current_sym_price <= stop_loss_price):
                         self.log.debug('\t\t LONG STOP LOSS TRIGGERED - EXITING')
                         self._sell(symbol, stop_loss_price, ds, 'long')
                         is_sl_triggered = 1
-                    elif (trade_type == 'short') and (current_sym_prices[ds] >= stop_loss_price):
+                    elif (trade_type == 'short') and (current_sym_price >= stop_loss_price):
                         self.log.debug('\t\t SHORT STOP LOSS TRIGGERED - EXITING')
                         self._sell(symbol, stop_loss_price, ds, 'short')
                         is_sl_triggered = 1
@@ -118,20 +119,24 @@ class Backtester():
             symbols_to_buy = self.position_sizer.decide_what_to_buy(
                 self._available_money*1.0,  # multplication is to create new object instead of using actual pointer
                 purchease_candidates,
-                capital = capital_at_time
+                capital = capital_at_time,
+                volatility = {
+                    c['symbol']: self.signals[c['symbol']]['volatility'][ds] 
+                    for c in purchease_candidates
+                }
             )
             for trx_details in symbols_to_buy:
                 self._buy(trx_details, ds)
             self.log.debug('\t[--  BUY END --]')
             # update auto_stop_loss for owned shares. it will be applied to existing day+1 based on data from day
             if self.auto_stop_loss != False:
-                for symbol in list(self._owned_shares.keys()):
+                for sym in list(self._owned_shares.keys()):
                     try:
                         self._update_auto_stop_loss(
-                            symbol, self.signals[symbol][self.price_label][ds], ds, org_days[idx+1]
+                            sym, self._get_price(sym, ds), ds, org_days[idx+1]
                         )
                     except IndexError:
-                        print('Index error LOL')
+                        # this will be the case only once at the last processed day
                         pass
             self._summarize_day(ds)
         return self._run_output(), self._trades
@@ -142,12 +147,18 @@ class Backtester():
         for k, df in signals.items():
             # initialize stop_loss column if needed
             if 'stop_loss' not in df.columns:
-                df.loc[:, 'stop_loss'] = None            
+                df.loc[:, 'stop_loss'] = None
+            # calculate volatility column with appropriate lag
+            if 'volatility' not in df.columns:
+                df.loc[:, 'volatility'] = df[self.price_label].shift().rolling(self.volatility_lb).std()
+                df['volatility'].fillna(0, inplace=True)
             _signals[k] = df.to_dict()
         return _signals
 
     def _reset_backtest_state(self):
-        """Resets/Initializes all attributes used during backtest run."""
+        """
+        Resets/Initializes all attributes used during backtest run.
+        """
         self._owned_shares = {}
         self._available_money = self.init_capital
         self._money_from_short = {}
@@ -244,7 +255,7 @@ class Backtester():
         Reutrns dictionary with purchease candidates and necessery keys.
         Handles setting up value for auto_stop_loss.
         """
-        price = self.signals[symbol][self.price_label][ds]
+        price = self._get_price(symbol, ds)
         if self.auto_stop_loss != False:
             stop_loss = self._calc_auto_sl(price, entry_type)
         elif self.stop_loss:
@@ -283,6 +294,9 @@ class Backtester():
 
     def _get_money_from_short(self):
         return sum([m for m in self._money_from_short.values()])
+
+    def _get_price(self, symbol, ds):
+        return self.signals[symbol][self.price_label][ds]
 
     def _update_auto_stop_loss(self, symbol, price, cur_ds, next_ds):
         """

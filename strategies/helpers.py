@@ -1,6 +1,45 @@
 # 3rd part
 import numpy as np
 
+
+def split_into_subsets(pricing_data, ratio, df=True):
+        """
+        Returns 2 dictionaries - test and validation. Both are in form of {symbol<string>: data<df|dict>}
+        *pricing_data* is dict in the form of:
+            {'symbol_key': output princing data from load method (df or dictionary)}
+        *ratio* defines what portion of data will be in first sample
+        """
+        # find max date for test set. that will be the base for the split.
+        dates = set()
+        if df == True:
+            for _df in pricing_data.values():
+                dates |= set(_df.index.tolist())
+        else:
+            for vals in pricing_data.values():
+                dates |= set([x[0] for x in vals])
+        ordered_dates = sorted(list(dates))
+        # use ratio to define the split
+        max_test_date = ordered_dates[int(len(ordered_dates)*ratio)-1]
+        # iterate over signals and cut/move them into test validation collections
+        test_set, validation_set = {}, {}
+        if df == True:
+            for sym, _df in pricing_data.items():
+                mask = (_df.index <= max_test_date)
+                test_set[sym] = _df[mask]
+                validation_set[sym] = _df[~mask]
+        else:
+            for sym, vals in pricing_data.items():
+                test_vals, validation_vals = [], []
+                for r in vals:
+                    if r[0] <= max_test_date:
+                        test_vals.append(r)
+                    else:
+                        validation_vals.append(r)
+                test_set[sym] = test_vals
+                validation_set[sym] = validation_vals
+        return test_set, validation_set
+
+
 def gather_entry_exist_signals_dates(df):
     """
     Useful when one need to visualise periods of long/short positions on the graph.

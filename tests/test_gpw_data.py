@@ -5,6 +5,7 @@ import pytest
 
 # custom
 from gpw_data import GPWData
+from strategies.helpers import split_into_subsets
 
 
 @pytest.fixture()
@@ -32,8 +33,7 @@ def mock_dates_dict():
 
 
 def test_splitting_into_subsets_df(mock_dates_df):
-    universe = GPWData()    
-    test_data, validation_data = universe.split_into_subsets(mock_dates_df, 0.5)
+    test_data, validation_data = split_into_subsets(mock_dates_df, 0.5)
     expected_test_sigs1 = pd.DatetimeIndex(['2010-09-28', '2010-09-29', '2010-09-30'])
     expected_validation_sigs1 = pd.DatetimeIndex(['2010-10-01', '2010-10-02'])
     expected_test_sigs2 =  pd.DatetimeIndex(['2010-09-30'])
@@ -45,8 +45,7 @@ def test_splitting_into_subsets_df(mock_dates_df):
 
 
 def test_splitting_into_subsets_dict(mock_dates_dict):
-    universe = GPWData()
-    test_data, validation_data = universe.split_into_subsets(mock_dates_dict, 0.5, df=False)
+    test_data, validation_data = split_into_subsets(mock_dates_dict, 0.5, df=False)
     expected_test_data = {
         'TEST_SIGS_1': [[d, 1] for d in ['2011-01-01','2011-01-02','2011-01-03','2011-01-04']],
         'TEST_SIGS_2': [[d, 1] for d in ['2011-01-04']]

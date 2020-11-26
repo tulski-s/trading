@@ -41,18 +41,20 @@ class Backtester():
         ))
 
         symbols_in_day = {}
+        symbols_next_days = {} # {sym: {day1: day2, day2:day3, ...}, ...}
         for sym_n, sym_v in self.signals.items():
-            for ds in sym_v[self.price_label].keys():
+            _dss = sorted(sym_v[self.price_label].keys())
+            symbols_next_days[sym_n] = {val: _dss[idx+1] for idx, val in enumerate(_dss[:-1])}
+            for ds in _dss:
                 if ds in symbols_in_day:
                     symbols_in_day[ds].append(sym_n)
                 else:
                     symbols_in_day[ds] = [sym_n]
-        org_days = sorted(symbols_in_day.keys())
-        
+        days = sorted(symbols_in_day.keys())
         if test_days:
-            days = org_days[:test_days]
+            days = days[:test_days]
         else:
-            days = org_days
+            days = days
 
         for idx, ds in enumerate(days):
             self.log.debug('['+15*'-'+str(ds)[0:10]+15*'-'+']')
@@ -67,35 +69,39 @@ class Backtester():
                     '\tOwned shares: ' + ', '.join('{}={}'.format(s, int(self._owned_shares[s]['cnt'])) 
                         for s in sorted(owned_shares))
                 )
+            available_owned_shares = []
             for symbol in owned_shares:
                 # safe check if missing ds for given owned symbol
                 if not symbol in symbols_in_day[ds]:
                     continue
                 current_sym_price = self._get_price(symbol, ds)
                 self.log.debug('\t+ Checking exit signal for: ' + symbol)
+                _sold = 0
                 if self.signals[symbol]['exit_long'][ds] == 1:
                     self.log.debug('\t\t EXIT LONG')
                     self._sell(symbol, current_sym_price, ds, 'long')
+                    _sold = 1
                 elif self.signals[symbol]['exit_short'][ds] == 1:
                     self.log.debug('\t\t EXIT SHORT')
                     self._sell(symbol, current_sym_price, ds, 'short')
+                    _sold = 1
                 elif (self.stop_loss == True) or (self.auto_stop_loss != False):
                     stop_loss_price = self.signals[symbol]['stop_loss'][ds]
                     trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type']
-                    is_sl_triggered = 0
                     if (trade_type == 'long') and (current_sym_price <= stop_loss_price):
                         self.log.debug('\t\t LONG STOP LOSS TRIGGERED - EXITING')
                         self._sell(symbol, stop_loss_price, ds, 'long')
-                        is_sl_triggered = 1
+                        _sold = 1
                     elif (trade_type == 'short') and (current_sym_price >= stop_loss_price):
                         self.log.debug('\t\t SHORT STOP LOSS TRIGGERED - EXITING')
                         self._sell(symbol, stop_loss_price, ds, 'short')
-                        is_sl_triggered = 1
-                    if is_sl_triggered == 1:
-                        self._auto_stop_loss_tracker.pop(symbol, None)
-                else:
+                        _sold = 1
+                if _sold == 0:
+                    available_owned_shares.append(symbol)
                     self.log.debug('\t+ Not exiting from: ' + symbol)
-            
+                elif (_sold == 1) and (self.auto_stop_loss != False):
+                    self._auto_stop_loss_tracker.pop(symbol, None)
+
             if self._available_money < 0:
                 raise AccountBankruptError(
                     "Account bankrupted! Money after sells is: {}. Backtester cannot run anymore!".format(
@@ -106,10 +112,13 @@ class Backtester():
             self.log.debug('\t[-- BUY START --]')
             purchease_candidates = []
             for sym in symbols_in_day[ds]:
+                cur_price = self._get_price(sym, ds)
+                # set up back-up price for all available symbols in given day
+                price = self._backup_prices[sym] = (cur_price, ds)
                 if self.signals[sym]['entry_long'][ds] == 1:
-                    purchease_candidates.append(self._define_candidate(sym, ds, 'long'))
+                    purchease_candidates.append(self._define_candidate(cur_price, sym, ds, 'long'))
                 elif self.signals[sym]['entry_short'][ds] == 1:
-                    purchease_candidates.append(self._define_candidate(sym, ds, 'short'))
+                    purchease_candidates.append(self._define_candidate(cur_price, sym, ds, 'short'))
             if purchease_candidates == []:
                 self.log.debug('\t\tNo candidates to buy.')
             else:
@@ -127,24 +136,35 @@ class Backtester():
             )
             for trx_details in symbols_to_buy:
                 self._buy(trx_details, ds)
+                available_owned_shares.append(trx_details['symbol'])
             self.log.debug('\t[--  BUY END --]')
-            # update auto_stop_loss for owned shares. it will be applied to existing day+1 based on data from day
+
+            # update auto_stop_loss for available owned shares. it will be applied to existing next day 
+            # based on data from current day
             if self.auto_stop_loss != False:
-                for sym in list(self._owned_shares.keys()):
+                for sym in available_owned_shares:
+                    if (sym not in symbols_in_day[ds]) or (ds not in symbols_next_days[sym]):
+                        continue
                     try:
-                        self._update_auto_stop_loss(
-                            sym, self._get_price(sym, ds), ds, org_days[idx+1]
+                        asl = self._update_auto_stop_loss(
+                            sym, self._get_price(sym, ds), ds, symbols_next_days[sym][ds]
                         )
+                        self.log.debug(f'\t Updated SL [{sym}]: {symbols_next_days[sym][ds]}: {asl}')
                     except IndexError:
-                        # this will be the case only once at the last processed day
+                        # this will be the case only once (at the last processed day)
                         pass
+
             self._summarize_day(ds)
         return self._run_output(), self._trades
 
     def _prepare_signal(self, signals):
         """Converts to expected dictionary form."""
-        _signals = signals.copy()
+        self.log.debug('Prepareing signals')
+        _signals = {}
         for k, df in signals.items():
+            # ignore if empty dataframe
+            if df.shape[0] == 0:
+                continue
             # initialize stop_loss column if needed
             if 'stop_loss' not in df.columns:
                 df.loc[:, 'stop_loss'] = None
@@ -153,6 +173,7 @@ class Backtester():
                 df.loc[:, 'volatility'] = df[self.price_label].shift().rolling(self.volatility_lb).std()
                 df['volatility'].fillna(0, inplace=True)
             _signals[k] = df.to_dict()
+        self.log.debug('Signals ready.')
         return _signals
 
     def _reset_backtest_state(self):
@@ -250,12 +271,11 @@ class Backtester():
         if trx['entry_type'] == 'short':
             self.log.debug('\t\tMoney from short sell: ' + str(self._money_from_short[trx_id]))
 
-    def _define_candidate(self, symbol, ds, entry_type):
+    def _define_candidate(self, price, symbol, ds, entry_type):
         """
         Reutrns dictionary with purchease candidates and necessery keys.
         Handles setting up value for auto_stop_loss.
         """
-        price = self._get_price(symbol, ds)
         if self.auto_stop_loss != False:
             stop_loss = self._calc_auto_sl(price, entry_type)
         elif self.stop_loss:
@@ -275,28 +295,24 @@ class Backtester():
         elif entry_type == 'short':
             return price + (price*self.auto_stop_loss)
 
-    def _calculate_account_value(self, ds, print_err_msg=True):
+    def _calculate_account_value(self, ds):
         _account_value = 0
         for symbol, vals in self._owned_shares.items():
-            try:
-                price = self.signals[symbol][self.price_label][ds]
-                self._backup_prices[symbol] = (price, ds)
-            except KeyError:
-                # in case of missing ds in symbol take previous price value
-                price, price_ds = self._backup_prices[symbol]
-                if print_err_msg == False:
-                    self.log.warning(
-                        '\t\t!!! Using backup price from {} for {} as there was no data for it at {} !!!'.format(
-                        price_ds, symbol, ds
-                    ))
-            _account_value += vals['cnt'] * price
+            _account_value += vals['cnt'] * self._get_price(symbol, ds)
         return _account_value
 
     def _get_money_from_short(self):
         return sum([m for m in self._money_from_short.values()])
 
     def _get_price(self, symbol, ds):
-        return self.signals[symbol][self.price_label][ds]
+        """
+        Do not use directly. If ds is not available it uses backup price. This backup price may not be
+        avialable. As its being constantly overwritten it also depends on backtest execution.
+        """
+        price = self.signals[symbol][self.price_label].get(ds)
+        if price == None:
+            price = self._backup_prices[symbol][0]
+        return price
 
     def _update_auto_stop_loss(self, symbol, price, cur_ds, next_ds):
         """
@@ -314,11 +330,12 @@ class Backtester():
         else:
             stop_loss = self.signals[symbol]['stop_loss'][cur_ds]
         self.signals[symbol]['stop_loss'][next_ds] = stop_loss
+        return stop_loss
 
     def _summarize_day(self, ds):
         """Sets up summaries after finished session day."""
         self.log.debug('[ SUMMARIZE SESSION {} ]'.format(str(ds)[:10]))
-        _account_value = self._calculate_account_value(ds, print_err_msg=False)
+        _account_value = self._calculate_account_value(ds)
         # account value (can be negative) + avaiable money + any borrowed moneny
         nav = _account_value + self._available_money + self._get_money_from_short()
         self._account_value[ds] = _account_value

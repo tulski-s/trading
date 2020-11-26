@@ -36,7 +36,7 @@ class PositionSize(metaclass=ABCMeta):
             fee = self.min_fee
         return round(fee, 2)
     
-    def sort(self, candidates, volatility=None, rrr=None):
+    def sort(self, candidates, volatility={}, rrr=None):
         _candidates = candidates.copy()
         if self.sort_type == 'alphabetically':
             _candidates.sort(key=lambda c: c['symbol'])
@@ -85,7 +85,7 @@ class MaxFirstEncountered(PositionSize):
     Decides to buy maximum amount of shares of the first encountered stock candidate. Candidates are checked according
     to `sort_type` order. If one cannot offord to buy any stock of given candidate - next one is checked. 
     """
-    def decide_what_to_buy(self, available_money_at_time, candidates, volatility=None, **kwargs):
+    def decide_what_to_buy(self, available_money_at_time, candidates, volatility={}, **kwargs):
         for candidate in self.sort(candidates, volatility=volatility):
             self._deciding_to_buy_msg(candidate['symbol'], candidate['entry_type'])
             price = candidate['price']
@@ -111,7 +111,7 @@ class FixedCapitalPerc(PositionSize):
         super().__init__(**kwargs)
         self.capital_perc = capital_perc
 
-    def decide_what_to_buy(self, available_money_at_time, candidates, capital=None, volatility=None, **kwargs):
+    def decide_what_to_buy(self, available_money_at_time, candidates, capital=None, volatility={}, **kwargs):
         single_buy_limit = round(capital*self.capital_perc, 2)
         self.log.debug('\t+ Based on capital: {} which gives signle transaction valiue limit: {} ({}%)'.format(
             capital, single_buy_limit, self.capital_perc*100
@@ -148,7 +148,7 @@ class PercentageRisk(PositionSize):
         self.perc_risk = perc_risk
         self.fallback_sl = fallback_sl
 
-    def decide_what_to_buy(self, available_money_at_time, candidates, capital=None, volatility=None, **kwargs):
+    def decide_what_to_buy(self, available_money_at_time, candidates, capital=None, volatility={}, **kwargs):
         symbols_to_buy = []
         for candidate in self.sort(candidates, volatility=volatility):
             if not candidate.get('stop_loss', None):
@@ -203,7 +203,7 @@ class FixedRisk(PositionSize):
         super().__init__(**kwargs)
         self.risk_per_trade = risk_per_trade
 
-    def decide_what_to_buy(self, available_money_at_time, candidates, volatility=None, **kwargs):
+    def decide_what_to_buy(self, available_money_at_time, candidates, volatility={}, **kwargs):
         # go over all candidates first time
         rrrs = {}
         all_candidates_processed = []
@@ -218,9 +218,10 @@ class FixedRisk(PositionSize):
                 rrrs[sym] = 1
             else:
                 shares_count = self.get_shares_count(theoretical_trx_value, price)
+                gain_per_trade = shares_count*volatility.get(sym, 0)
                 # assumes that price can rise/fall curr_price +- 1std
-                if volatility != None:
-                    rrrs[sym] = self.risk_per_trade / (shares_count*volatility[sym])
+                if gain_per_trade > 0:
+                    rrrs[sym] = self.risk_per_trade / gain_per_trade
                 else:
                     rrrs[sym] = 1
             real_trx_value = shares_count*price

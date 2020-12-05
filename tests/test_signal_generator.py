@@ -469,7 +469,7 @@ def test_generate_final_signal_no_constraints(pricing_df1, config_2):
     assert(expected_results.to_dict() == test_final_results.to_dict())
 
 
-def test_generate_final_signal_with_wait_for_confirmation(pricing_df1, config_4):
+def test_generate_final_signal_with_wait_for_confirmation_1(pricing_df1, config_4):
     sg = SignalGenerator(df=pricing_df1, config=config_4)
     # powinno miec 12. bo 13 df + 1d lookback
     test_initial_results = [0, 1, 1, 1, 1, -1, 0, 1, -1, -1, -1, 1]
@@ -481,6 +481,24 @@ def test_generate_final_signal_with_wait_for_confirmation(pricing_df1, config_4)
         'entry_long': [0] + [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0],
         'exit_long': [0] + [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
         'entry_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+        'exit_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+    })
+    assert(expected_results.to_dict() == test_final_results.to_dict())
+
+
+def test_generate_final_signal_with_wait_for_confirmation_2(pricing_df1, config_4):
+    # note: pricing_df1 is quite arbitrary. it do not impact test. config defines
+    # lookback and wait_for_confirmation values
+    sg = SignalGenerator(df=pricing_df1, config=config_4)
+    test_initial_results = [0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 0, 0]
+    test_final_results = sg._generate_final_signal_with_constraints(
+        test_initial_results, return_signal=True,
+    )
+    test_final_results.drop(['close'], axis=1, inplace=True)
+    expected_results = pd.DataFrame({
+        'entry_long': [0] + [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0],
+        'exit_long': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0],
+        'entry_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         'exit_short': [0] + [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     })
     assert(expected_results.to_dict() == test_final_results.to_dict())

@@ -314,19 +314,31 @@ class SignalGenerator():
                 # Case-0 Tracker not active, already in long/short position
                 if not _wait_entry_confirmation_tracker and (current == previous):
                     self._remain_position(signal_triggers, position=current)
+
                 # Case-1 Tracker not active and entry signal. Set up expected signal and start to wait.
                 elif not _wait_entry_confirmation_tracker and current in (-1, 1):
                     _expected_signal = current
                     _wait_entry_confirmation_tracker = 1
                     _previous_at_wait_start = previous
-                    self._remain_position(signal_triggers, position=current)
-                # Case-2 Tracker not active, but no entry signal. Do nothing.
+                    # position is kept as previous. as not entered yet
+                    self._remain_position(signal_triggers, position=_previous_at_wait_start)
+
+                # Case-2 Tracker not active, but no entry signal. Do nothing or go neutral
                 elif not _wait_entry_confirmation_tracker and current == 0:
-                    self._remain_position(signal_triggers, position=current)
+                    _previous_from_processed = self.final_positions[-1]
+                    if _previous_from_processed in (-1, 1):
+                        # go neutral
+                        self._change_position(_previous_from_processed, current, signal_triggers)
+                    else:
+                        # remain current neutral position
+                        self._remain_position(signal_triggers, position=current)
+
                 # Case-3 Tracker is active, but still need to wait.
                 elif _wait_entry_confirmation_tracker < self.wait_entry_confirmation:
                     _wait_entry_confirmation_tracker += 1
-                    self._remain_position(signal_triggers, position=current)
+                    # again, as its not yet time to enter position is kept as previous of waiting
+                    self._remain_position(signal_triggers, position=_previous_at_wait_start)
+
                 # Case-4 Waited enough time. Check if signal is what it was expected
                 elif _wait_entry_confirmation_tracker == self.wait_entry_confirmation:
                     # signal as expected
@@ -691,6 +703,8 @@ class SignalGenerator():
 
 def triggers_to_states(df):
     """
+    DEPRECATED
+    
     Note - this implementation is slow and no longer needed. Use final_positions attribute of
     SignalGenerator insted. Keeping it for backward compatibility
 

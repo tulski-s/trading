@@ -214,8 +214,7 @@ class FixedRisk(PositionSize):
             value_at_risk_per_share = abs(price - stop_loss)
             theoretical_trx_value = (self.risk_per_trade//value_at_risk_per_share) * price
             if available_money_at_time < theoretical_trx_value:
-                shares_count = 0
-                rrrs[sym] = 1
+                continue
             else:
                 shares_count = self.get_shares_count(theoretical_trx_value, price)
                 gain_per_trade = shares_count*volatility.get(sym, 0)
@@ -224,6 +223,8 @@ class FixedRisk(PositionSize):
                     rrrs[sym] = self.risk_per_trade / gain_per_trade
                 else:
                     rrrs[sym] = 1
+            if shares_count == 0:
+                continue
             real_trx_value = shares_count*price
             expected_fee = self.calculate_fee(real_trx_value)
             all_candidates_processed.append(self._define_symbol_to_buy(candidate, shares_count, real_trx_value, expected_fee))

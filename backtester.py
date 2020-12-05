@@ -237,6 +237,10 @@ class Backtester():
                     ds, trx['entry_type'], trx['symbol']
                 )
             )
+        if trx['shares_count'] == 0:
+            raise ValueError(
+                f'Trying to buy 0 shares. It should not be possible'
+            )
 
         trx_id = '_'.join((str(ds)[:10], trx['symbol'], trx['entry_type']))
         self.log.debug('\t\tBuying {} (Transaction id: {})'.format(trx['symbol'], trx_id))

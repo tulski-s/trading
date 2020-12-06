@@ -77,15 +77,8 @@ class Backtester():
                 current_sym_price = self._get_price(symbol, ds)
                 self.log.debug('\t+ Checking exit signal for: ' + symbol)
                 _sold = 0
-                if self.signals[symbol]['exit_long'][ds] == 1:
-                    self.log.debug('\t\t EXIT LONG')
-                    self._sell(symbol, current_sym_price, ds, 'long')
-                    _sold = 1
-                elif self.signals[symbol]['exit_short'][ds] == 1:
-                    self.log.debug('\t\t EXIT SHORT')
-                    self._sell(symbol, current_sym_price, ds, 'short')
-                    _sold = 1
-                elif (self.stop_loss == True) or (self.auto_stop_loss != False):
+                # 0) check if stop loss
+                if (self.stop_loss == True) or (self.auto_stop_loss != False):
                     stop_loss_price = self.signals[symbol]['stop_loss'][ds]
                     trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type']
                     if (trade_type == 'long') and (current_sym_price <= stop_loss_price):
@@ -96,6 +89,16 @@ class Backtester():
                         self.log.debug('\t\t SHORT STOP LOSS TRIGGERED - EXITING')
                         self._sell(symbol, stop_loss_price, ds, 'short')
                         _sold = 1
+                # 1) if stop loss does not exists: check usual exit signal
+                # 2) in case stop loss exists but it was not triggered: check usual exit signal
+                if (self.signals[symbol]['exit_long'][ds] == 1) and (_sold == 0):
+                    self.log.debug('\t\t EXIT LONG')
+                    self._sell(symbol, current_sym_price, ds, 'long')
+                    _sold = 1
+                elif (self.signals[symbol]['exit_short'][ds] == 1) and (_sold == 0):
+                    self.log.debug('\t\t EXIT SHORT')
+                    self._sell(symbol, current_sym_price, ds, 'short')
+                    _sold = 1
                 if _sold == 0:
                     available_owned_shares.append(symbol)
                     self.log.debug('\t+ Not exiting from: ' + symbol)

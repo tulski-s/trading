@@ -150,6 +150,103 @@ def performance_report(results, trades):
     
     plt.tight_layout()
     plt.show()
+
+
+def year_trades(year, trades):
+    """
+    Detailed summary of trades for given year(s). `year` can be int or iterable with ints.
+    IT plots summary table and returns dict with metrics and their values.
+    """
+    years = []
+    if isinstance(year, int):
+        years = [year]
+    else:
+        years = year
+    
+    metrics_labels = (
+        'total_profit', 'no_trades', 'no_winning_trades', 'no_loosing_trades', 'win_rate',
+        'no_open_at_the_end', 'no_long_trades', 'no_short_trades', 'avg_profit',
+        'avg_winning_profit', 'avg_loosing_profit', 'expectation', 'max_loosing_trade',
+        'max_winning_trade','avg_trade_length','max_trade_length','min_trade_length',
+    )
+    metrics = {m: 0 for m in metrics_labels}
+    _avg_profit = 0
+    _winning_trades = []
+    _loosing_trades = []
+    _trade_lengths = []
+    for t_name, t_details in trades.items():
+        # trade names should start with YYYY-MM-DD
+        if int(t_name[:4]) in years:
+            _profit = t_details['profit']
+            metrics['total_profit'] += _profit
+            if _profit > 0:
+                metrics['no_winning_trades'] += 1
+                metrics['avg_winning_profit'] += _profit
+                _winning_trades.append(_profit)
+            else:
+                metrics['no_loosing_trades'] += 1
+                metrics['avg_loosing_profit'] += _profit
+                _loosing_trades.append(_profit)
+            metrics['no_trades'] += 1
+            sell_ds = str(t_details.get('sell_ds', None))
+            if (sell_ds == None) or (int(sell_ds[:4]) not in years):
+                metrics['no_open_at_the_end'] += 1
+            if sell_ds:
+                _trade_lengths.append(
+                    (t_details['sell_ds'] - t_details['buy_ds']).days
+                )
+            if t_details['type'] == 'long':
+                metrics['no_long_trades'] += 1
+            elif t_details['type'] == 'short':
+                metrics['no_short_trades'] += 1
+    metrics['total_profit'] = round(metrics['total_profit'], 2)
+    metrics['avg_profit'] = round(metrics['total_profit'] / metrics['no_trades'], 2)
+    metrics['win_rate'] = round(metrics['no_winning_trades']/metrics['no_trades'], 2)
+    metrics['avg_winning_profit'] = round(metrics['avg_winning_profit'] / metrics['no_trades'], 2)
+    metrics['avg_loosing_profit'] = round(metrics['avg_loosing_profit'] / metrics['no_trades'], 2)
+    metrics['expectation'] = round(
+        (metrics['win_rate'] * metrics['avg_winning_profit'])
+        - ((1-metrics['win_rate']) * metrics['avg_loosing_profit'])
+        , 2
+    )
+    if len(_winning_trades) > 0:
+        metrics['max_winning_trade'] = max(_winning_trades)
+    if len(_loosing_trades) > 0:
+        metrics['max_loosing_trade'] = min(_loosing_trades)
+    if len(_trade_lengths) > 0:
+        metrics['avg_trade_length'] = int(sum(_trade_lengths) / len(_trade_lengths))
+        metrics['max_trade_length'] = max(_trade_lengths)
+        metrics['min_trade_length'] = min(_trade_lengths)
+        
+    # Create matplotlib TABLE
+    fig, ax = plt.subplots()
+    fig.patch.set_visible(False)
+    ax.axis('off')
+    ax.axis('tight')
+    if len(years) == 1:
+        ax.set_title(f'Trades sumary for year: {year}', loc='center')
+    else:
+        _sorted_ys = sorted(years)
+        ax.set_title(f'Trades sumary for years: {_sorted_ys[0]} - {_sorted_ys[-1]}', loc='center')
+    table = ax.table(
+        cellText=[[k, metrics[k]] for k in metrics_labels],
+        colLabels=['Metric', 'Value'], 
+        colWidths=[0.4, 0.3],
+        loc='center', 
+        cellLoc='center',
+    )
+    for (row, col), cell in table.get_celld().items():
+        if (row == 0):
+            cell.set_text_props(fontproperties=FontProperties(weight='bold'))
+        if cell.get_text()._text == 'expectation':
+            if metrics['expectation'] > 0:
+                table[(row, 1)].set_facecolor("#90EE90")
+            else:
+                table[(row, 1)].set_facecolor("#DC143C")
+    table.set_fontsize(9)
+    table.scale(1, 1.2)
+    
+    return metrics
     
 
 

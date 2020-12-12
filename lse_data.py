@@ -5,6 +5,7 @@ import os
 import time
 
 # 3rd party
+import dateparser
 import investpy
 import pandas as pd
 import numpy as np
@@ -66,7 +67,7 @@ class LSEData():
         else:
             return pricing_data
 
-    def download_data_to_csv(self, symbols=None):
+    def download_data_to_csv(self, symbols=None, from_date=None, append_csv=False):
         """
         Collects historical data and outputs csv file in *pricing_data_path*. Currently it takes
         history from 1990 until execution date and its overwriting files.
@@ -74,21 +75,24 @@ class LSEData():
         for symbol in symbols:
             print('Downloading {}'.format(symbol))
             try:
-                pricing_data = self._get_stock_historical_data(symbol)
+                pricing_data = self._get_stock_historical_data(symbol, from_date=from_date)
             except ConnectionError:
                 print('Some connection issue. Waiting 60s and retrying')
                 time.sleep(60)
-                pricing_data = self._get_stock_historical_data(symbol)
+                pricing_data = self._get_stock_historical_data(symbol, from_date=from_date)
             dates = [d.date().strftime('%Y-%m-%d') for d in pricing_data.index.to_list()]
             data_arrs = []
             for col in self.column_names[1:]:
                 data_arrs.append(pricing_data[col.capitalize()].to_list())
             data = list(zip(*data_arrs))
+            mode = 'w' if append_csv == False else 'a'
             with open(self._output_path(symbol), 'w') as fh:
                 writer = csv.writer(fh)
                 writer.writerow(self.column_names)
                 for idx, d in enumerate(dates):
                     writer.writerow((d,) + data[idx])
+
+
             time.sleep(1)
 
     def get_all_available_symbols(self):
@@ -101,11 +105,16 @@ class LSEData():
     def _output_path(self, symbol):
         return os.path.join(self.pricing_data_path, '{}_pricing.csv'.format(symbol))
 
-    def _get_stock_historical_data(self, symbol):
+    def _get_stock_historical_data(self, symbol, from_date=None):
+        if from_date != None:
+            from_date_obj = dateparser.parse(from_date)
+            from_date = from_date_obj.strftime('%d/%m/%Y')
+        else:
+            from_date = '01/01/1990'
         return investpy.get_stock_historical_data(
             stock=symbol,
             country=self.country,
-            from_date='01/01/1990',
+            from_date=from_date,
             to_date=datetime.date.today().strftime('%d/%m/%Y'),
         )
 

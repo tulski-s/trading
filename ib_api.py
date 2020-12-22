@@ -15,9 +15,6 @@ from ibapi.contract import Contract
 from ibapi.ticktype import TickTypeEnum
 
 """
-Paper Trading Username: slaw3741
-Paper Trading Account Number: DU2222127
-
 Useful tutorials for Python API:
 - https://www.youtube.com/playlist?list=PL71vNXrERKUpPreMb3z1WGx6fOTCzMaH1
 - https://www.quantstart.com/articles/connecting-to-the-interactive-brokers-native-python-api/

@@ -26,7 +26,7 @@ class IBAPIWrapper(EWrapper):
     def __init__(self):
         EWrapper.__init__(self)
         self.FINISHED = 'END'
-        self._market_data = queue.Queue()
+        self._market_data_queues = {}
         self._portfolio_details = queue.Queue()
 
     def error(self, id, errorCode, errorString):
@@ -44,11 +44,22 @@ class IBAPIWrapper(EWrapper):
 
     def contractDetails(self, reqId, contractDetails):
         print(f"[reqId:{reqId}] Contract details: {contractDetails}")
+        # TODO: missing overload for contractDetailsEnd method
 
     def tickPrice(self, reqId, tickType, price, attrib):
         symbol = self._reqDetails[reqId]['symbol']
         tickType_name = TickTypeEnum.to_str(tickType)
         print(f"[reqId: {reqId}], symbol:{symbol}, tickType: {tickType_name}({tickType}), Value: {price}")
+        self._market_data_queues[reqId].put({
+            'Symbol': symbol,
+            'TickTypeName': tickType_name,
+            'TickType': tickType,
+            'Price': price
+        })
+
+    def tickSnapshotEnd(self, tickerId: int):
+        print(f'Finished getting market data for reqId:{tickerId}')
+        self._market_data_queues[tickerId].put(self.FINISHED)
 
     def updatePortfolio(self, contract:Contract, position:float, marketPrice:float, marketValue:float,
                         averageCost:float, unrealizedPNL:float, realizedPNL:float, accountName:str):
@@ -134,7 +145,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
             contract.primaryExchange = primaryExchange
         return contract
 
-    def get_current_price(self, contract=None, MarketDataType=None, tickTypes=''):
+    def get_current_price(self, contract=None, MarketDataType=None, tickTypes='', stream=False, timeout=10):
         """
         MarketDataType : `int`
             1: default, live data. won't be enable for most instruments. unless there is subscription
@@ -156,8 +167,28 @@ class IBAPIApp(IBAPIWrapper, EClient):
         symbol = contract.symbol
         print(f'Requesting market data for: {symbol}')
         reqId = self.get_reqId()
-        self._setReqDetails(reqId, 'reqMktData', symbol, now)
-        self.reqMktData(reqId, contract, tickTypes, False, False, [])
+        self._market_data_queues[reqId] = queue.Queue()
+        self._set_req_details(reqId, 'reqMktData', symbol, now)
+        if stream == False:
+            snapshot = True # one time snapshot
+        else:
+            snapshot = False # streaming data
+        self.reqMktData(reqId, contract, tickTypes, snapshot, False, [])
+        _output = {'symbol': symbol}
+        q = self._market_data_queues[reqId]
+        t_start = datetime.datetime.now()
+        while True:
+            if not q.empty():
+                msg = q.get()
+                if msg == self.FINISHED:
+                    break
+                if msg['Price'] != 0:
+                    _output[msg['TickTypeName'].replace('DELAYED_', '')] = msg['Price']
+            t_cur = datetime.datetime.now()
+            if (t_cur - t_start).seconds > timeout:
+                print(f'Timed out from getting {symbol} market data')
+                return None
+        return _output
 
     def get_portfolio_details(self, timeout=10):
         self.reqAccountUpdates(True, '')
@@ -193,7 +224,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
         for i in range(91):
             print(TickTypeEnum.to_str(i), i)
 
-    def _setReqDetails(self, reqId, org_call, symbol, now_ts):
+    def _set_req_details(self, reqId, org_call, symbol, now_ts):
         self._reqDetails[reqId] = {
             'org_call': org_call,
             'symbol': symbol,
@@ -213,16 +244,15 @@ def main():
     app.reqCurrentTime()
     time.sleep(1)
 
-    # Get contract details
-    iii = app.get_contract(symbol='III')
-    app.reqContractDetails(app.get_reqId(), iii)
-    time.sleep(1)
-
-    # Get price data
-    # Note... this asks for frequent updates... if you live program running you will get more updates...
-    # is there End function for this one too?
-    app.get_current_price(contract=iii)
-    time.sleep(2)
+    for symbol in ('III', 'ADM'):
+        ctr = app.get_contract(symbol=symbol)
+        app.reqContractDetails(app.get_reqId(), ctr)
+        # Get contract details
+        time.sleep(1)
+        # Get price data
+        mkt_data = app.get_current_price(contract=ctr)
+        print(f"{symbol} market data: {mkt_data}")
+        time.sleep(2)
 
     # Get portfolio details
     portfolio_details = app.get_portfolio_details()
@@ -241,7 +271,9 @@ if __name__ == '__main__':
 TODOs:
 OK - v0 to do get price and details with prints only
 OK - properly get portfolio details
-- properly get market price
+OK - properly get market price
+- place basic order
+- place SL order
 
 """
 

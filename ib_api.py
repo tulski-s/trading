@@ -13,13 +13,8 @@ from ibapi.client import EClient
 from ibapi.wrapper import EWrapper
 from ibapi.contract import Contract
 from ibapi.ticktype import TickTypeEnum
-
-"""
-Useful tutorials for Python API:
-- https://www.youtube.com/playlist?list=PL71vNXrERKUpPreMb3z1WGx6fOTCzMaH1
-- https://www.quantstart.com/articles/connecting-to-the-interactive-brokers-native-python-api/
-- https://algotrading101.com/learn/interactive-brokers-python-api-native-guide/
-"""
+from ibapi.order import Order
+from ibapi.tag_value import TagValue
 
 
 class IBAPIWrapper(EWrapper):
@@ -145,6 +140,41 @@ class IBAPIApp(IBAPIWrapper, EClient):
             contract.primaryExchange = primaryExchange
         return contract
 
+    def create_order(self, action=None, quantity=None, orderType=None, lmtPrice=None, adaptive=False, adaptivePriority=None):
+        """
+        Creates order definition.
+        Base order types: (https://www.interactivebrokers.co.uk/en/index.php?f=41254)
+            LMT: "Limit", buy or sell a contract ONLY at the specified price or better
+            MKT: "Market", buy or sell an asset at the bid or offer price currently available. You have no guarantee that the order 
+                  will execute at any specific price.
+            MOC: "Market on Close", a market order that is submitted to execute as close to the closing price as possible
+            TRAIL: "Trailing Stop"
+                - after SL is triggered it becomes like MKT
+                - Usualy you just need to set trailing (TRL) amount
+                - https://www.interactivebrokers.co.uk/en/index.php?f=37800
+            TRAIL LIMIT: "Trailing Stop Limit"
+                - after SL is triggered order becomes like LMT
+                - set STP and TRL price
+
+        On top of the basic order types, it is possible to make use of the 'advanced' aglos. E.g.:
+            - "Adaptive Limit", "Adaptive Market":
+                - https://interactivebrokers.github.io/tws-api/ibalgos.html#adaptive
+                - adaptivePriority: Urgent, Normal, Patient
+        """
+        order = Order()
+        order.action = action
+        order.totalQuantity = quantity
+        order.orderType = orderType
+        if lmtPrice != None:
+            order.lmtPrice = lmtPrice
+        if adaptive == True:
+            if adaptivePriority == None:
+                adaptivePriority = 'Normal'
+            order.algoStrategy = "Adaptive"
+            order.algoParams = []
+            order.algoParams.append(TagValue("adaptivePriority", adaptivePriority))
+        return order
+
     def get_current_price(self, contract=None, MarketDataType=None, tickTypes='', stream=False, timeout=10):
         """
         MarketDataType : `int`
@@ -263,7 +293,6 @@ def main():
     # app.disconnect()
     # print("Disconnected from the IB API application. Finished.")
 
-
 if __name__ == '__main__':
     main()
 
@@ -274,6 +303,13 @@ OK - properly get portfolio details
 OK - properly get market price
 - place basic order
 - place SL order
+- get orders status
+
+
+Useful tutorials for Python API:
+- https://www.youtube.com/playlist?list=PL71vNXrERKUpPreMb3z1WGx6fOTCzMaH1
+- https://www.quantstart.com/articles/connecting-to-the-interactive-brokers-native-python-api/
+- https://algotrading101.com/learn/interactive-brokers-python-api-native-guide/
 
 """
 

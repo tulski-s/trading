@@ -15,6 +15,8 @@ from ibapi.contract import Contract
 from ibapi.ticktype import TickTypeEnum
 from ibapi.order import Order
 from ibapi.tag_value import TagValue
+from ibapi.order_state import OrderState
+from ibapi.execution import Execution
 
 
 class IBAPIWrapper(EWrapper):
@@ -23,6 +25,7 @@ class IBAPIWrapper(EWrapper):
         self.FINISHED = 'END'
         self._market_data_queues = {}
         self._portfolio_details = queue.Queue()
+        self._orders_queue = queue.Queue()
 
     def error(self, id, errorCode, errorString):
         """ Formats the error messages coming from TWS. """
@@ -93,6 +96,69 @@ class IBAPIWrapper(EWrapper):
         print('Got all Account Updates!')
         self._portfolio_details.put(self.FINISHED)
 
+    def orderStatus(self, orderId:int , status:str, filled:float, remaining:float, avgFillPrice:float, permId:int,
+                    parentId:int, lastFillPrice:float, clientId:int, whyHeld:str, mktCapPrice: float):
+        """
+        https://interactivebrokers.github.io/tws-api/interfaceIBApi_1_1EWrapper.html#a17f2a02d6449710b6394d0266a353313
+        """
+        str_msg = (
+            f"[orderStatus] orderId: {orderId}, Status: {status}, Filled: {filled}, "
+            f"Remaining: {remaining}, Last Fill Price: {lastFillPrice}"
+        )
+        print(str_msg)
+        self._orders_queue.put({
+            'callback': 'orderStatus',
+            'orderId': orderId,
+            'status': status,
+            'filled': filled,
+            'remaining': remaining,
+            'lastFillPrice': lastFillPrice,
+        })
+
+    def openOrder(self, orderId:int, contract:Contract, order:Order, orderState:OrderState):
+        """
+        https://interactivebrokers.github.io/tws-api/interfaceIBApi_1_1EWrapper.html#aa05258f1d005accd3efc0d60bc151407
+        """
+        str_msg = (
+            f"[openOrder] orderId: {orderId}, Symbol: {contract.symbol}, {contract.secType} at {contract.exchange}: "
+            f"{order.action}, {order.orderType}, {order.totalQuantity}. Order state: {orderState.status}"
+        )
+        print(str_msg)
+        self._orders_queue.put({
+            'callback': 'openOrder',
+            'orderId': orderId,
+            'symbol': contract.symbol,
+            'exchange': contract.exchange,
+            'orderAction': order.action,
+            'orderType': order.orderType,
+            'totalQuantity': order.totalQuantity,
+            'status': orderState.status,
+        })
+
+    def openOrderEnd(self):
+        print('Got all callbacks from openOrder!')
+        self._orders_queue.put(self.FINISHED)
+
+    def execDetails(self, reqId:int, contract:Contract, execution:Execution):
+        """
+        https://interactivebrokers.github.io/tws-api/interfaceIBApi_1_1EWrapper.html#a09f82de3d0666d13b00b5168e8b9313d
+        """
+        str_msg = (
+            f"[execDetails] reqId: {reqId}, Symbol: {contract.symbol}, {contract.secType} in {contract.currency}. "
+            f"execId: {execution.execId}, orderId: {execution.orderId}, Shares: {execution.shares}, "
+            f"Last Liquidity: {execution.lastLiquidity}"
+        )
+        print(str_msg)
+        # TODO: implement
+        pass
+
+    def execDetailsEnd(self, reqId:int):
+        """
+        https://interactivebrokers.github.io/tws-api/interfaceIBApi_1_1EWrapper.html#ac9b605c48d60da99ef595d2bc7ca39e2
+        """
+        # TODO: implement
+        pass
+
 
 class IBAPIApp(IBAPIWrapper, EClient):
     """
@@ -110,8 +176,9 @@ class IBAPIApp(IBAPIWrapper, EClient):
         """
         IBAPIWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
+        self.nextValidOrderId = None
 
-        self._nextValidReqId = 0
+        self._nextReqId = 0
         self._reqDetails = {}
 
         # Connects to the IB server with the appropriate connection parameters
@@ -125,9 +192,19 @@ class IBAPIApp(IBAPIWrapper, EClient):
         self._thread = thread
 
     def get_reqId(self):
-        reqId = self._nextValidReqId
-        self._nextValidReqId += 1
+        """Note, this is NOT order id."""
+        reqId = self._nextReqId
+        self._nextReqId += 1
         return reqId
+
+    def nextValidId(self, orderId: int):
+        super().nextValidId(orderId)
+        self.nextValidOrderId = orderId
+
+    def nextOrderId(self):
+        oid = self.nextValidOrderId
+        self.nextValidOrderId += 1
+        return oid
 
     def get_contract(self, symbol=None, secType='STK', exchange='SMART', primaryExchange='LSE', currency='GBP'):
         contract = Contract()
@@ -140,7 +217,8 @@ class IBAPIApp(IBAPIWrapper, EClient):
             contract.primaryExchange = primaryExchange
         return contract
 
-    def create_order(self, action=None, quantity=None, orderType=None, lmtPrice=None, adaptive=False, adaptivePriority=None):
+    def create_order(self, action=None, quantity=None, orderType=None, lmtPrice=None, adaptive=False, adaptivePriority=None,
+        trailingPercent=None, trailStopPrice=None):
         """
         Creates order definition.
         Base order types: (https://www.interactivebrokers.co.uk/en/index.php?f=41254)
@@ -167,6 +245,11 @@ class IBAPIApp(IBAPIWrapper, EClient):
         order.orderType = orderType
         if lmtPrice != None:
             order.lmtPrice = lmtPrice
+        if trailingPercent != None:
+            # as int. e.g. if 5% then 5
+            order.trailingPercent = trailingPercent
+        if trailStopPrice != None:
+            order.trailStopPrice = trailStopPrice
         if adaptive == True:
             if adaptivePriority == None:
                 adaptivePriority = 'Normal'
@@ -250,6 +333,41 @@ class IBAPIApp(IBAPIWrapper, EClient):
                 return None
         return _output
 
+    def get_current_orders(self, timeout=10):
+        self.reqAllOpenOrders()
+        q = self._orders_queue
+        t_start = datetime.datetime.now()
+        _orders = {}
+        _symbols = set()
+        _orderIds = set()
+        while True:
+            if not q.empty():
+                msg = q.get()
+                if msg == self.FINISHED:
+                    break
+                orderId = msg['orderId']
+                _orderIds.add(orderId)
+                if orderId not in _orders:
+                    _orders[orderId] = {}
+                if msg['callback'] == 'openOrder':
+                    _symbols.add(msg['symbol'])
+                    _orders[orderId]['symbol'] = msg['symbol']
+                    _orders[orderId]['action'] = msg['orderAction']
+                    _orders[orderId]['status'] = msg['status']
+                    _orders[orderId]['orderType'] = msg['orderType']
+                    _orders[orderId]['totalQuantity'] = msg['totalQuantity']
+                elif msg['callback'] == 'orderStatus':
+                    _orders[orderId]['filled'] = msg['filled']
+                    _orders[orderId]['remaining'] = msg['remaining']
+                    _orders[orderId]['lastFillPrice'] = msg['lastFillPrice']
+            t_cur = datetime.datetime.now()
+            if (t_cur - t_start).seconds > timeout:
+                print('Timed out from getting current orders')
+                return None
+        _orders['orders'] = sorted(list(_orderIds))
+        _orders['symbols'] = sorted(list(_symbols))
+        return _orders
+
     def print_tickTypes(self):
         for i in range(91):
             print(TickTypeEnum.to_str(i), i)
@@ -274,19 +392,46 @@ def main():
     app.reqCurrentTime()
     time.sleep(1)
 
+    contracts = {}
     for symbol in ('III', 'ADM'):
         ctr = app.get_contract(symbol=symbol)
-        app.reqContractDetails(app.get_reqId(), ctr)
+        contracts[symbol] = ctr
         # Get contract details
+        app.reqContractDetails(app.get_reqId(), ctr)
         time.sleep(1)
         # Get price data
-        mkt_data = app.get_current_price(contract=ctr)
+        mkt_data = app.get_current_price(contract=ctr, timeout=3)
         print(f"{symbol} market data: {mkt_data}")
         time.sleep(2)
 
     # Get portfolio details
     portfolio_details = app.get_portfolio_details()
     print(f'Portfolio details: {portfolio_details}')
+
+    # Place order
+    # print('Placing Adaptive Order')
+    # adaptive_order = app.create_order(
+    #     action='BUY', quantity=10, orderType='MKT', adaptive=True, adaptivePriority='Patient'
+    # )
+    # app.placeOrder(
+    #     app.nextOrderId(),  # orderId
+    #     contracts['ADM'],   # Contract
+    #     adaptive_order,     # Order
+    # )
+
+    # print('Place SL order')
+    # sl_order = app.create_order(
+    #     action='SELL', quantity=10, orderType='TRAIL', trailingPercent=1
+    # )
+    # app.placeOrder(
+    #     app.nextOrderId(),  # orderId
+    #     contracts['ADM'],   # Contract
+    #     sl_order,           # Order
+    # )
+
+    print('Getting current orders...')
+    current_orders = app.get_current_orders()
+    print('current_orders: ', current_orders)
 
     # Disconnect and finish execution
     # time.sleep(5)
@@ -301,9 +446,10 @@ TODOs:
 OK - v0 to do get price and details with prints only
 OK - properly get portfolio details
 OK - properly get market price
-- place basic order
-- place SL order
-- get orders status
+OK - place basic order
+OK - place SL order
+OK - get orders status
+- should I wrap placing orders? so e.g. it is assured to be use correct orderId etc?
 
 
 Useful tutorials for Python API:

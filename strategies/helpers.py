@@ -1,3 +1,6 @@
+# built in
+import datetime
+
 # 3rd part
 import numpy as np
 
@@ -38,6 +41,33 @@ def split_into_subsets(pricing_data, ratio, df=True):
                 test_set[sym] = test_vals
                 validation_set[sym] = validation_vals
         return test_set, validation_set
+
+
+def get_recent_x_sessions(pricing_data=None, days=None, ignore_current_ds=False):
+    """
+    input: *pricing_data* is dict in the form of: {'symbol_key': df}
+
+    It returns dict in the same form as input but symbols will have data only for most
+    recent `days` days.
+
+    It does NOT make sure if the dates for all symbols are aligned. E.g. if one symbol
+    has data from year ago and other will be up-to-date, then sessions may not even overlap
+    """
+    if ignore_current_ds == False:
+        return {
+            sym: df.iloc[-days:]
+            for sym, df in pricing_data.items()
+        }
+    else:
+        output = {}
+        cur_ds = datetime.datetime.now().strftime('%Y-%m-%d') 
+        for sym, df in pricing_data.items():
+            lst_ds = df.index[-1].strftime('%Y-%m-%d')
+            if lst_ds == cur_ds:
+                output[sym] = df.iloc[-days:-1]
+            else:
+                output[sym] = df.iloc[-days:]
+        return output
 
 
 def gather_entry_exist_signals_dates(df):

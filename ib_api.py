@@ -1,12 +1,14 @@
 # built in
 import time
 import datetime
-# import sys
 import threading
 import queue
 
 # 3rd party
 import pytz
+
+# custom
+import commons
 
 # IB API
 from ibapi.client import EClient
@@ -149,7 +151,7 @@ class IBAPIWrapper(EWrapper):
             f"Last Liquidity: {execution.lastLiquidity}"
         )
         print(str_msg)
-        # TODO: implement
+        # TODO: implement putting things into the queue
         pass
 
     def execDetailsEnd(self, reqId:int):
@@ -380,10 +382,12 @@ class IBAPIApp(IBAPIWrapper, EClient):
         }
 
 
-def main():
+def main(test_orders=False):
+    PORT = 7497
+
     print("Launching IB API application...")
     app = IBAPIApp(
-        port=7497,
+        port=PORT,
         clientId=666,
     )
     print("Successfully launched IB API application...")
@@ -408,56 +412,48 @@ def main():
     portfolio_details = app.get_portfolio_details()
     print(f'Portfolio details: {portfolio_details}')
 
-    # Place order
-    # print('Placing Adaptive Order')
-    # adaptive_order = app.create_order(
-    #     action='BUY', quantity=10, orderType='MKT', adaptive=True, adaptivePriority='Patient'
-    # )
-    # app.placeOrder(
-    #     app.nextOrderId(),  # orderId
-    #     contracts['ADM'],   # Contract
-    #     adaptive_order,     # Order
-    # )
-
-    # print('Place SL order')
-    # sl_order = app.create_order(
-    #     action='SELL', quantity=10, orderType='TRAIL', trailingPercent=1
-    # )
-    # app.placeOrder(
-    #     app.nextOrderId(),  # orderId
-    #     contracts['ADM'],   # Contract
-    #     sl_order,           # Order
-    # )
-
+    if test_orders == True:
+        if PORT != 7497:
+            raise ValueError('Aborting. Port is different than default for paper trading account!')
+        # Adaptive
+        print('Placing Adaptive Order')
+        adaptive_order = app.create_order(
+            action='BUY', quantity=10, orderType='MKT', adaptive=True, adaptivePriority='Patient'
+        )
+        app.placeOrder(
+            app.nextOrderId(),  # orderId
+            contracts['ADM'],   # Contract
+            adaptive_order,     # Order
+        )
+        # Trailing Stop Loss
+        print('Place SL order')
+        sl_order = app.create_order(
+            action='SELL', quantity=10, orderType='TRAIL', trailingPercent=1
+        )
+        app.placeOrder(
+            app.nextOrderId(),  # orderId
+            contracts['ADM'],   # Contract
+            sl_order,           # Order
+        )
+    time.sleep(1)
     print('Getting current orders...')
     current_orders = app.get_current_orders()
     print('current_orders: ', current_orders)
 
     # Disconnect and finish execution
-    # time.sleep(5)
-    # app.disconnect()
-    # print("Disconnected from the IB API application. Finished.")
+    time.sleep(5)
+    app.disconnect()
+    print("Disconnected from the IB API application. Finished.")
+
 
 if __name__ == '__main__':
-    main()
-
-"""
-TODOs:
-OK - v0 to do get price and details with prints only
-OK - properly get portfolio details
-OK - properly get market price
-OK - place basic order
-OK - place SL order
-OK - get orders status
-- should I wrap placing orders? so e.g. it is assured to be use correct orderId etc?
-
-
-Useful tutorials for Python API:
-- https://www.youtube.com/playlist?list=PL71vNXrERKUpPreMb3z1WGx6fOTCzMaH1
-- https://www.quantstart.com/articles/connecting-to-the-interactive-brokers-native-python-api/
-- https://algotrading101.com/learn/interactive-brokers-python-api-native-guide/
-
-"""
-
-
-
+    parser = commons.get_parser()
+    parser.add_argument(
+        '--test_orders', '-to',
+        action='store_true', 
+        help='flag to run placing orders',
+    )
+    args = parser.parse_known_args()[0]
+    main(
+        test_orders=args.test_orders,
+    )

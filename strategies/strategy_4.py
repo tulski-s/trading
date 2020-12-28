@@ -5,6 +5,7 @@ Strategy 4 - Based on some good performing rule on data mining experiment. Uses 
 # built in
 import sys
 sys.path.insert(0, '/Users/slaw/osobiste/trading')
+sys.path.insert(0, '/Users/slaw/osobiste/trading/strategies')
 
 import logging
 
@@ -26,7 +27,7 @@ import helpers
 import rules
 
 
-long_only_oba_s_n2_config = {
+long_only_s4_config = {
     'rules': [
         {
             'id': 'oba_s_n2',
@@ -159,7 +160,7 @@ def main():
         print('Processing: ', sym)
         signals[sym] = SignalGenerator(
             df = universe[sym],
-            config = long_only_oba_s_n2_config
+            config = long_only_s4_config
         ).generate()
 
     print('All symbols generated. Moving to backtest')

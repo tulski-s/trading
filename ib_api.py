@@ -32,7 +32,7 @@ class IBAPIWrapper(EWrapper):
     def error(self, id, errorCode, errorString):
         """ Formats the error messages coming from TWS. """
         error_message = f"IB Error ID ({id}), Error Code ({errorCode}) with response '{errorString}'"
-        print(error_message)
+        self.log.debug(error_message)
 
     def currentTime(self, server_time):
         """
@@ -40,16 +40,16 @@ class IBAPIWrapper(EWrapper):
         of reqCurrentTime.
         """
         server_time = datetime.datetime.utcfromtimestamp(server_time).strftime('%Y-%m-%d %H:%M:%S')
-        print(f'Current server time is: {server_time}')
+        self.log.debug(f'Current server time is: {server_time}')
 
     def contractDetails(self, reqId, contractDetails):
-        print(f"[reqId:{reqId}] Contract details: {contractDetails}")
+        self.log.debug(f"[reqId:{reqId}] Contract details: {contractDetails}")
         # TODO: missing overload for contractDetailsEnd method
 
     def tickPrice(self, reqId, tickType, price, attrib):
         symbol = self._reqDetails[reqId]['symbol']
         tickType_name = TickTypeEnum.to_str(tickType)
-        print(f"[reqId: {reqId}], symbol:{symbol}, tickType: {tickType_name}({tickType}), Value: {price}")
+        self.log.debug(f"[reqId: {reqId}], symbol:{symbol}, tickType: {tickType_name}({tickType}), Value: {price}")
         self._market_data_queues[reqId].put({
             'Symbol': symbol,
             'TickTypeName': tickType_name,
@@ -58,7 +58,7 @@ class IBAPIWrapper(EWrapper):
         })
 
     def tickSnapshotEnd(self, tickerId: int):
-        print(f'Finished getting market data for reqId:{tickerId}')
+        self.log.debug(f'Finished getting market data for reqId:{tickerId}')
         self._market_data_queues[tickerId].put(self.FINISHED)
 
     def updatePortfolio(self, contract:Contract, position:float, marketPrice:float, marketValue:float,
@@ -68,7 +68,7 @@ class IBAPIWrapper(EWrapper):
             f"Market Value: {marketValue} Average Cost: {averageCost}, Unrealized PNL: {unrealizedPNL}, "
             f"Realized PNL: {realizedPNL}"
         )
-        print(str_msg)
+        self.log.debug(str_msg)
         self._portfolio_details.put({
             'key': 'Position',
             'symbol': contract.symbol,
@@ -84,7 +84,7 @@ class IBAPIWrapper(EWrapper):
         """
         https://interactivebrokers.github.io/tws-api/interfaceIBApi_1_1EWrapper.html#ae15a34084d9f26f279abd0bdeab1b9b5
         """
-        print(f"[updateAccountValue] Key: {key}, Value: {val}, Currency: {currency}, Account Name: {accountName}")
+        self.log.debug(f"[updateAccountValue] Key: {key}, Value: {val}, Currency: {currency}, Account Name: {accountName}")
         self._portfolio_details.put({
             'key': key,
             'val': val,
@@ -92,10 +92,10 @@ class IBAPIWrapper(EWrapper):
         })
 
     def updateAccountTime(self, timeStamp:str):
-        print(f"[updateAccountTime] Time: {timeStamp}")
+        self.log.debug(f"[updateAccountTime] Time: {timeStamp}")
 
     def accountDownloadEnd(self, accountName: str):
-        print('Got all Account Updates!')
+        self.log.debug('Got all Account Updates!')
         self._portfolio_details.put(self.FINISHED)
 
     def orderStatus(self, orderId:int , status:str, filled:float, remaining:float, avgFillPrice:float, permId:int,
@@ -107,7 +107,7 @@ class IBAPIWrapper(EWrapper):
             f"[orderStatus] orderId: {orderId}, Status: {status}, Filled: {filled}, "
             f"Remaining: {remaining}, Last Fill Price: {lastFillPrice}"
         )
-        print(str_msg)
+        self.log.debug(str_msg)
         self._orders_queue.put({
             'callback': 'orderStatus',
             'orderId': orderId,
@@ -125,7 +125,7 @@ class IBAPIWrapper(EWrapper):
             f"[openOrder] orderId: {orderId}, Symbol: {contract.symbol}, {contract.secType} at {contract.exchange}: "
             f"{order.action}, {order.orderType}, {order.totalQuantity}. Order state: {orderState.status}"
         )
-        print(str_msg)
+        self.log.debug(str_msg)
         self._orders_queue.put({
             'callback': 'openOrder',
             'orderId': orderId,
@@ -138,7 +138,7 @@ class IBAPIWrapper(EWrapper):
         })
 
     def openOrderEnd(self):
-        print('Got all callbacks from openOrder!')
+        self.log.debug('Got all callbacks from openOrder!')
         self._orders_queue.put(self.FINISHED)
 
     def execDetails(self, reqId:int, contract:Contract, execution:Execution):
@@ -150,7 +150,7 @@ class IBAPIWrapper(EWrapper):
             f"execId: {execution.execId}, orderId: {execution.orderId}, Shares: {execution.shares}, "
             f"Last Liquidity: {execution.lastLiquidity}"
         )
-        print(str_msg)
+        self.log.debug(str_msg)
         # TODO: implement putting things into the queue
         pass
 
@@ -169,13 +169,15 @@ class IBAPIApp(IBAPIWrapper, EClient):
     clientId : `int`
         An (arbitrary) client ID, that must be a positive integer
     """
-    def __init__(self, port=None, clientId=None):
+    def __init__(self, port=None, clientId=None, debug=True, logger=None):
         """
         currencies: iterable
             Iterable with currencies codes that should be considered by API
         base_currency: str
             Currency code for base currency
         """
+        self.log = commons.setup_logging(logger=logger, debug=debug)
+
         IBAPIWrapper.__init__(self)
         EClient.__init__(self, wrapper=self)
         self.nextValidOrderId = None
@@ -280,7 +282,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
         self.reqMarketDataType(MarketDataType)
         # send request
         symbol = contract.symbol
-        print(f'Requesting market data for: {symbol}')
+        self.log.debug(f'Requesting market data for: {symbol}')
         reqId = self.get_reqId()
         self._market_data_queues[reqId] = queue.Queue()
         self._set_req_details(reqId, 'reqMktData', symbol, now)
@@ -301,7 +303,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
                     _output[msg['TickTypeName'].replace('DELAYED_', '')] = msg['Price']
             t_cur = datetime.datetime.now()
             if (t_cur - t_start).seconds > timeout:
-                print(f'Timed out from getting {symbol} market data')
+                self.log.debug(f'Timed out from getting {symbol} market data')
                 return None
         return _output
 
@@ -331,7 +333,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
                     }
             t_cur = datetime.datetime.now()
             if (t_cur - t_start).seconds > timeout:
-                print('Timed out from getting portfolio details')
+                self.log.debug('Timed out from getting portfolio details')
                 return None
         return _output
 
@@ -364,7 +366,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
                     _orders[orderId]['lastFillPrice'] = msg['lastFillPrice']
             t_cur = datetime.datetime.now()
             if (t_cur - t_start).seconds > timeout:
-                print('Timed out from getting current orders')
+                self.log.debug('Timed out from getting current orders')
                 return None
         _orders['orders'] = sorted(list(_orderIds))
         _orders['symbols'] = sorted(list(_symbols))
@@ -382,13 +384,14 @@ class IBAPIApp(IBAPIWrapper, EClient):
         }
 
 
-def main(test_orders=False):
+def main(test_orders=False, debug=True):
     PORT = 7497
 
     print("Launching IB API application...")
     app = IBAPIApp(
         port=PORT,
         clientId=666,
+        debug=debug
     )
     print("Successfully launched IB API application...")
 
@@ -456,4 +459,5 @@ if __name__ == '__main__':
     args = parser.parse_known_args()[0]
     main(
         test_orders=args.test_orders,
+        debug=args.debug,
     )

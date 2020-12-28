@@ -5,12 +5,14 @@ ftse_100 = [
   {
     "name": "3i",
     "symbol": "III",
-    "sector": "Financial Services"
+    "sector": "Financial Services",
+    "IB": "III"
   },
   {
     "name": "Admiral Group",
     "symbol": "ADML",
-    "sector": "Nonlife Insurance"
+    "sector": "Nonlife Insurance",
+    "IB": "ADM"
   },
   {
     "name": "Anglo American plc",

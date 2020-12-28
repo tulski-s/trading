@@ -64,14 +64,15 @@ class IBAPIWrapper(EWrapper):
     def updatePortfolio(self, contract:Contract, position:float, marketPrice:float, marketValue:float,
                         averageCost:float, unrealizedPNL:float, realizedPNL:float, accountName:str):
         str_msg = (
-            f"[updatePortfolio] Symbol: {contract.symbol}, Position: {position}, Market Price: {marketPrice}, "
-            f"Market Value: {marketValue} Average Cost: {averageCost}, Unrealized PNL: {unrealizedPNL}, "
-            f"Realized PNL: {realizedPNL}"
+            f"[updatePortfolio] Symbol: {contract.symbol} ({contract.secType}), Position: {position}, "
+            f"Market Price: {marketPrice}, Market Value: {marketValue} Average Cost: {averageCost}, "
+            f"Unrealized PNL: {unrealizedPNL}, Realized PNL: {realizedPNL}"
         )
         self.log.debug(str_msg)
         self._portfolio_details.put({
             'key': 'Position',
             'symbol': contract.symbol,
+            'contractType': contract.secType,
             'positionCnt': position,
             'marketPrice': marketPrice,
             'marketValue': marketValue,
@@ -330,6 +331,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
                         'marketValue': msg['marketValue'],
                         'averageCost': msg['averageCost'],
                         'unrealizedPNL': msg['unrealizedPNL'],
+                        'contractType': msg['contractType'],
                     }
             t_cur = datetime.datetime.now()
             if (t_cur - t_start).seconds > timeout:

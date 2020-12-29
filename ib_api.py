@@ -270,6 +270,9 @@ class IBAPIApp(IBAPIWrapper, EClient):
             2: "Frozen", like 1, but after sessions is closed
             3: "Delayed", if user does not have subscritpion for instruments where it is required
             4: "Deleyed-Frozen", like 3, but after sesssion is closed
+
+        tickTypes : 'str', comma delimited
+            https://interactivebrokers.github.io/tws-api/tick_types.html
         """
         now = datetime.datetime.now(pytz.timezone('Europe/London'))
         dow =  now.weekday() # 0-Monday, 6-Sunday
@@ -409,7 +412,7 @@ def main(test_orders=False, debug=True):
         app.reqContractDetails(app.get_reqId(), ctr)
         time.sleep(1)
         # Get price data
-        mkt_data = app.get_current_price(contract=ctr, timeout=3)
+        mkt_data = app.get_current_price(contract=ctr, timeout=3, tickTypes='66,67,75,68,72,73,74,76')
         print(f"{symbol} market data: {mkt_data}")
         time.sleep(2)
 

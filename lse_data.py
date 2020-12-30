@@ -91,8 +91,6 @@ class LSEData():
                 writer.writerow(self.column_names)
                 for idx, d in enumerate(dates):
                     writer.writerow((d,) + data[idx])
-
-
             time.sleep(1)
 
     def get_all_available_symbols(self):

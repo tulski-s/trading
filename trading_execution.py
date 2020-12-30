@@ -66,7 +66,7 @@ class TradingExecutor():
         else:
             self.log.debug('Ignore check if its after 3pm to trade')
         
-        # Initialize session. get data, generate signals, get IB account details etc.
+        # Initialize session: get up-to-date data, generate signals, get IB account details etc.
         self.start_session()
 
         # Check if signal data is up-to-date
@@ -78,37 +78,24 @@ class TradingExecutor():
                 return None
         else:
             self.log.debug('Ignore check if signals have up to date processed data')
+            self.log.debug(
+                f"! Note that {last_signals_ds} will be used to get entry/exit signals, "
+                f"but today is: {self.today} !"
+            )
 
-        # Gather buy/sell signals (NOT FINISHED)
-        to_sell = {}
-        to_buy = {}
-        for symbol, df in self.universe.items():
-            try:
-                sym_cur_data = self.signals[symbol].loc[self.today]
-            except KeyError:
-                # If signals are no up to date only for single symbol - ignore this one
-                self.log.debug(f'No current data ({self.today}) for {symbol}. Assuming no entry/exit')
-                sym_cur_data = {'entry_long': 0, 'exit_long': 0}
+        # Gather buy/sell signals
+        # to_sell, buy_candidates = self._gather_buy_sell_signals(last_signals_ds)
+        to_sell, buy_candidates = self._gather_buy_sell_signals('2020-12-30')
 
+        # Place sell orders for held symbols that should be closed
+        self._execute_exit_signals(to_sell)
 
+        # Run position sizer to decide what to buy
+        # NOTE: at this moment closing position orders are (most-probably) not yet filled
+        # available money are not yet updated. so buying can be based on smaller amount here
+        self.log.debug(f'Buying candidates: {buy_candidates}')
+        # ...
 
-        # IGNORE THIS SECTION FOR NOW. NOT SURE IF STILL VALID
-        # recent_not_today = self._get_recent_not_today()
-        # self.log.debug(f'Recent not today date is: {recent_not_today}')
-        # check what you own vs. what signals indicate you should own
-        # determine things that still should be sold
-        # held_for_sell = []
-        # for sym in self.hold_symbols:
-        #     _df = self.signals.get(sym, None)
-        #     if isinstance(_df, type(None)):
-        #         # ignore symbols that you hold but are not in the universe
-        #         continue
-        #     _day_data = _df.loc[recent_not_today]
-        #     # no long position or long exit signal
-        #     if (_day_data['position'] == 0) or (_day_data['exit_long'] == 1):
-        #         held_for_sell.append(sym)
-        # self.log.debug(f'Held symbols that should be sold: {held_for_sell}')
-        
 
         """
         High-level flow:
@@ -127,6 +114,18 @@ class TradingExecutor():
                 - cancel not filled buy orders (lost opportunity. happens.)
                 - send an alert to me in case there is open sell order (any kind) that
                   should be filled but it's not
+
+        Questions:
+        1.
+            What about money that I got from sell? Right now I just sequentially plan to send
+            sell and buy order. That means I will have less money for buying things...
+
+            After orders are out one should probablyt monitor order execution and continue to
+            buy things as sell orders are filled..
+
+        2.
+            Closing positions should also be repeated probably... so that if along with time
+            new symbol joins to_sell pool they are also included
         """
 
     def start_session(self):
@@ -229,10 +228,16 @@ class TradingExecutor():
         symbols = lse_data.indicies_stocks['FTSE100']
         if load_csv == False:
             lse_data.download_data_to_csv(symbols=symbols)
-        universe = helpers.get_recent_x_sessions(
-            pricing_data=lse_data.load(symbols=symbols),
-            days=self.signal_lookback,
-        )
+        # NOTE: Lookback may impact consistency of generated signals. E.g. if for signal
+        # one uses some sort of day-over-day calculations (e.g. OBV) that may cause
+        # same date to have different signal depending on the run date 
+        if self.signal_lookback != None:
+            universe = helpers.get_recent_x_sessions(
+                pricing_data=lse_data.load(symbols=symbols),
+                days=self.signal_lookback,
+            )
+        else:
+            universe = lse_data.load(symbols=symbols)
         # translate FTSE symbols to its representation in IB (e.g. ADML == ADM)
         translated_universe = {}
         for sym in universe.keys():
@@ -251,6 +256,42 @@ class TradingExecutor():
             ).generate()
         return signals
 
+    def _gather_buy_sell_signals(self, ds):
+        to_sell = []
+        buy_candidates = []
+        for symbol, df in self.universe.items():
+            try:
+                sym_cur_data = self.signals[symbol].loc[ds]
+            except KeyError:
+                # If signals are no up to date only for single symbol - ignore this one
+                self.log.debug(f'No current data ({self.today}) for {symbol}. Assuming no entry/exit')
+                continue
+            # looking at `position` for selling is just precautious in case of missing exit trigger
+            if (sym_cur_data['position'] == 0) or (sym_cur_data['exit_long'] == 1):
+                to_sell.append(symbol)
+            elif sym_cur_data['entry_long'] == 1:
+                buy_candidates.append(symbol)
+        return to_sell, buy_candidates
+
+    def _execute_exit_signals(self, to_sell):
+        self.log.debug(f'Got exit signals from following symbols: {to_sell}')
+        held_for_sell = [
+            symbol for symbol in to_sell if symbol in self.hold_symbols
+        ]
+        self.log.debug(f'Those are hold symbols that should be sold: {held_for_sell}')
+        for symbol in held_for_sell:
+            contract = self.ib_app.get_contract(symbol=symbol)
+            # it will be Adaptive Market Order with Normal priority
+            share_cnt = self.positions_cnts[symbol]
+            order = self.ib_app.create_order(
+                action='SELL',
+                quantity=share_cnt,
+                orderType='MKT',
+                adaptive=True
+            )
+            self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, order)
+            self.log.debug(f'Placed SELL order for {share_cnt} shares of {symbol}')
+
     def _check_ib_env(self):
         # TODO: Implement. This should be additional check for test/prod account 
         pass
@@ -260,12 +301,12 @@ class TradingExecutor():
 
 
 def main(download_data=True, ib_port=None, debug=False, ignore_xe_check=False, 
-         ignore_tod_check=False, ignore_sa_check=False):
+         ignore_tod_check=False, ignore_sa_check=False, lookback=None):
     executor = TradingExecutor(
         pricing_data_path='/Users/slaw/osobiste/trading/pricing_data',
         load_csv=download_data,
         signal_config=long_only_s4_config,
-        signal_lookback=100,
+        signal_lookback=lookback,
         ib_port=ib_port,
         debug=debug,
     )
@@ -288,6 +329,12 @@ if __name__ == '__main__':
         action='store_const',
         const=1234,  # not valid port yet
         help='production port that IB App should connect to'
+    )
+    parser.add_argument(
+        '--lookback', '-lb',
+        action='store',
+        default=None,
+        type=int,
     )
     # add agrs for trading checks
     parser.add_argument(
@@ -315,6 +362,7 @@ if __name__ == '__main__':
     main(
         debug=args.debug,
         download_data=args.skip_download,
+        lookback=args.lookback,
         ib_port=port,
         ignore_xe_check=args.ignore_xe_check,
         ignore_tod_check=args.ignore_tod_check,
@@ -323,6 +371,8 @@ if __name__ == '__main__':
 
 
 """
+example signals[symbol] dataframe
+
 open   high     low  close     volume         obv  entry_long  exit_long  entry_short  exit_short  position
 date                                                                                                                    
 2020-08-06  608.6  614.8  595.80  610.0  1684018.0  -1684018.0         0.0        0.0          0.0         0.0         0

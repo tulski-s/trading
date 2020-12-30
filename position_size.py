@@ -57,6 +57,15 @@ class PositionSize(metaclass=ABCMeta):
     def get_shares_count(self, money, price):
         return money // (price + (price*self.fee_perc))
 
+    def define_candidate(self, symbol=None, entry_type=None, price=None, stop_loss=None):
+        """ Reutrns dictionary with purchease candidates """
+        return {
+            'symbol': symbol,
+            'entry_type': entry_type,
+            'price': price,
+            'stop_loss': stop_loss
+        }
+
     def _define_symbol_to_buy(self, candidate, shares_count, trx_value, expected_fee):
         return {
             'symbol': candidate['symbol'],

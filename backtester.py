@@ -289,12 +289,12 @@ class Backtester():
             stop_loss = self.signals[symbol].get('stop_loss', None)      
         else:
             stop_loss = None
-        return {
-            'symbol': symbol,
-            'entry_type': entry_type,
-            'price': price,
-            'stop_loss': stop_loss
-        }
+        return self.position_sizer.define_candidate(
+            symbol=symbol,
+            entry_type=entry_type,
+            price=price,
+            stop_loss=stop_loss,
+        )
 
     def _calc_auto_sl(self, price, entry_type):
         if entry_type == 'long':

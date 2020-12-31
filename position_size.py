@@ -27,6 +27,7 @@ class PositionSize(metaclass=ABCMeta):
 
     @abstractmethod
     def decide_what_to_buy(self, available_money_at_time, candidates, **kwargs):
+        """ Should use _define_symbol_to_buy in output """
         pass
 
     def calculate_fee(self, transaction_value):

@@ -170,8 +170,8 @@ def main():
 
     # set up
     init_capital = 10000
-    risk_per_trade = 100
-    auto_stop_loss = 0.01
+    risk_per_trade = 80
+    auto_stop_loss = 0.015
     volatility_lb = 14
     position_sizer = FixedRisk(
         fee_perc = 0,

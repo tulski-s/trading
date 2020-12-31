@@ -1,7 +1,5 @@
 # 3rd party
 import matplotlib
-# matplotlib.use('TkAgg') # to avoid "(...) not installed as a framework (...)" error on Mac
-matplotlib.use('agg') # that helped when I had no module _tkinter
 from matplotlib.font_manager import FontProperties
 import matplotlib.gridspec as gridspec
 import matplotlib.pyplot as plt

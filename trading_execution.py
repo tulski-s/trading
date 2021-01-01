@@ -52,6 +52,32 @@ class TradingExecutor():
         self._check_ib_env()
 
     def trade(self, ignore_xe_check=False, ignore_tod_check=False, ignore_sa_check=False):
+        """
+        High-level flow:
+        - Run checks:
+            - is exchange open? 
+            - what time is it? - it should start execution ~1-2h before closing
+        - Initialize session:
+            - download/get pricing data
+            - run signal generation
+            - get current account status: money and what you currently hold
+        - More checks:
+            - are generated signals up to date?
+        - Gather entry/exit signals -> lists of things to buy and sell
+        - Place and monitor orders until everything is sold and bought
+            - see _place_and_monitor_sell_buy for more details
+        - Exit
+            - This will be changed later.
+        - Generates signals again with more up to date data from investpy?
+            - This is open question. Not sure if it makes sense right now
+        - Do things after session is closed
+            - NOT IMPLEMENTED YET
+            - it will:
+                - Cancel not filled buy orders. Its lost opportunity. That may happen. 
+                  Better that keeping MKT order and next day executionis at the open price
+                - Send an alert to me in case there is open sell order (any kind) that
+                  should be filled but it's not
+        """
         # Check if exchange is open
         if ignore_xe_check == False:
             exchange_is_open = self.check_if_trade_open()
@@ -93,6 +119,7 @@ class TradingExecutor():
         # Gather buy/sell signals
         to_sell, buy_candidates = self._gather_buy_sell_signals(last_signals_ds)
         self.log.debug(f'Got exit signals from following symbols: {to_sell}')
+        self.log.debug(f'Buying candidates: {buy_candidates}')
         # Run position sizer to decide what to buy
         # NOTE: at this moment closing position orders are (most-probably) not yet filled
         # available money are not yet updated. so buying can be based on smaller amount here
@@ -104,56 +131,16 @@ class TradingExecutor():
                 for c in buy_candidates
             }
         )
-        self.log.debug(f'Buying candidates: {buy_candidates}')
+        self.log.debug(f'Symbols/shares to buy based on position sizing: {to_buy}')
 
         # Place and monitor orders until everything is sold and bought
         while (len(to_sell) != 0) and (len(to_buy) != 0):
             to_buy, to_sell = self._place_and_monitor_sell_buy(to_buy, to_sell)
-            # TMP: break here to avoid infinite loop till the point _place_and_monitor_sell_buy is correct
-            break
 
         # Close trading for now
         self.log.debug(f'All thing are now sold and bough. Finish trading.')
         # That will be handled differently later on
         return None
-
-        """
-        High-level flow:
-        - do things at the end of the session. e.g. 1-2h before closing
-        - take data near end of the session as full data
-        - this is closest thing to backtest scenario
-        - risk of not filling orders... but it can be mitigated with limits etc.
-        - flow would be:
-            -> start at fixed hour of trading session (e.g. 1-2 before closing a session):
-                - check all the things to sell
-                - place sell orders
-                - check all the things to buy
-                - run position sizer to determine what to buy
-                - place buy and stop loss orders (repeat until things are sold/bought)
-            -> after session is closed:
-                - cancel not filled buy orders (lost opportunity. happens.)
-                - send an alert to me in case there is open sell order (any kind) that
-                  should be filled but it's not
-
-        # TODO: add here check if session is already closed
-
-        # ? TODO: potentially _place_and_monitor_sell_buy can be wrapped in another 
-        # loop so that _gather_buy_sell_signals is run multiple times
-
-
-
-        Questions:
-        1.
-            What about money that I got from sell? Right now I just sequentially plan to send
-            sell and buy order. That means I will have less money for buying things...
-
-            After orders are out one should probablyt monitor order execution and continue to
-            buy things as sell orders are filled..
-
-        2.
-            Closing positions should also be repeated probably... so that if along with time
-            new symbol joins to_sell pool they are also included
-        """
 
     def start_session(self):
         self.log.debug('Starting session!')
@@ -162,11 +149,6 @@ class TradingExecutor():
         self.signals = self._prepare_signals()
         self.log.debug('All signals ready')
         self.account_details = self.get_account_details()
-        self.log.debug(
-            'Initial account details ready: '
-            f'available_cash: {self.available_cash}, hold_symbols: {self.hold_symbols}, '
-            f'positions_cnts: {self.positions_cnts}',
-        )
 
     def get_account_details(self):
         portfolio_details = self.ib_app.get_portfolio_details()
@@ -177,6 +159,11 @@ class TradingExecutor():
             if (details['contractType'] == 'STK') and (details['positionCnt'] > 0):
                 self.hold_symbols.append(symbol)
                 self.positions_cnts[symbol] = int(portfolio_details['positions'][symbol]['positionCnt'])
+        self.log.debug(
+            'Account details ready: '
+            f'available_cash: {self.available_cash}, hold_symbols: {self.hold_symbols}, '
+            f'positions_cnts: {self.positions_cnts}',
+        )
         return portfolio_details
 
     def check_if_trade_open(self):
@@ -316,7 +303,7 @@ class TradingExecutor():
         held_for_sell = [
             symbol for symbol in to_sell if symbol in self.hold_symbols
         ]
-        self.log.debug(f'Those are held symbols that should be sold: {held_for_sell}')
+        self.log.debug(f'Will close positions for following symbols: {held_for_sell}')
         for symbol in held_for_sell:
             contract = self.ib_app.get_contract(symbol=symbol)
             # it will be Adaptive Market Order with Normal priority
@@ -331,69 +318,95 @@ class TradingExecutor():
             self.log.debug(f'Placed SELL order for {shares_cnt} shares of {symbol}')
 
     def _execute_entry_signals(self, to_buy):
+        self.log.debug(f'Will open positions for following symbols: {[tb['symbol'] for tb in to_buy]}')
         for candidate in to_buy:
             symbol = candidate['symbol']
-            # You cannot make BUY order for symbols you already own 
-            # BUG! What if symbol is not hold yet but there is open order for it?
-            if symbol not in self.hold_symbols:
-                contract = self.ib_app.get_contract(symbol=symbol)
-                shares_cnt = candidate['shares_count']
-                # Adaptive Limit Order with Normal priority
-                buy_order = self.ib_app.create_order(
-                    action='BUY',
-                    quantity=shares_cnt,
-                    orderType='MKT',
-                    adaptive=True
-                )
-                self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, buy_order)
-                self.log.debug(f'Placed BUY order for {shares_cnt} shares of {symbol}')
-                # protective TRAILING STOP LOSS sell order
-                _stop_loss = int(self.stop_loss_perc*100)
-                sell_order = self.ib_app.create_order(
-                    action='SELL',
-                    quantity=shares_cnt,
-                    orderType='TRAIL',
-                    trailingPercent=_stop_loss,
-                )
-                self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, sell_order)
-                self.log.debug(
-                    f'Placed protective sell Stop Loss ({_stop_loss}%) order for ' 
-                    f'{shares_cnt} shares of {symbol}'
-                )
+            if symbol in self.hold_symbols:
+                # You cannot make BUY order for symbols you already own 
+                continue
+            contract = self.ib_app.get_contract(symbol=symbol)
+            shares_cnt = candidate['shares_count']
+            # Adaptive Limit Order with Normal priority
+            buy_order = self.ib_app.create_order(
+                action='BUY',
+                quantity=shares_cnt,
+                orderType='MKT',
+                adaptive=True
+            )
+            self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, buy_order)
+            self.log.debug(f'Placed BUY order for {shares_cnt} shares of {symbol}')
+            # protective TRAILING STOP LOSS sell order
+            _stop_loss = int(self.stop_loss_perc*100)
+            sell_order = self.ib_app.create_order(
+                action='SELL',
+                quantity=shares_cnt,
+                orderType='TRAIL',
+                trailingPercent=_stop_loss,
+            )
+            self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, sell_order)
+            self.log.debug(
+                f'Placed protective sell Stop Loss ({_stop_loss}%) order for ' 
+                f'{shares_cnt} shares of {symbol}'
+            )
 
     def _place_and_monitor_sell_buy(self, to_buy, to_sell):
         """
-        This is not yet done. There are bugs here... It needs to be fixed.
-        Probably a good way to do this will be checking get_current_orders status
-        to get information about hanging orders...
-
-        But its not that obvious as I want to wait for sell execution...
-
-        Potentially, one option is to look at opened orders in _execute_{exit|entry}_signals.
+        Input:
+            to_buy:  list of candidates to buy (check struct in position sizer)
+            to_sell: list of symbols
+        
+        High-level flow:
+            - This method is executed in loop until to_buy and to_sell are empty
+            - At first it takes currently opened orders to filter out symbols from to_buy/sell
+              so that same orders are not placed twice in case order is still not filled
+            - Then it closes positions from to_sell (send SELL ordedrs)
+            - Then opens positions from to_buy (BUY orders + protective SELL orders with Stop Loss)
+            - Waits a while for orders to fill (those are market orders so expecting relatively
+              fast fill time)
+            - After that, update account details so that money and positions are up to date
+            - Then is defines more things to buy. There should be more money comming from sold
+              things. This can be used to buy more.
+            - At the end, to_buy/to_sell should be up to date so that next iteration is ok 
         """
+        # Get currently opened orders
+        opened_orders = self.ib_app.get_current_orders()
+        while opened_orders == None:
+            self.log.debug('Could not get opened orderes. Wait 1min and trying again.')
+            time.sleep(60)
+            opened_orders = self.ib_app.get_current_orders()
+        
+        # Check all the current orders and update to_buy/to_sell lists accordingly
+        # [{'symbol': s1, ...}, ...] -> {s1: 0, ...}
+        to_buy_sym_idx_map = {s: idx for idx, s in enumerate([tb['symbol'] for tb in to_buy])}
+        # [s1, s2, ...] -> {s1: 0, s2: 1, ...}
+        to_sell_sym_idx_map = {s: idx for idx, s in enumerate(to_sell)}
+        # (if there are opened orders already -> apporiatly remove elements from lists)
+        for order_id in opened_orders['orders']:
+            _order = opened_orders[order_id]
+            _symbol = _order['symbol']
+            # as all order statuses (e.g. Submitted or Filled) are relevant - there is no check
+            if _order['action'] == 'BUY':
+                if _symbol in to_buy_sym_idx_map.keys():
+                    to_buy.pop(to_buy_sym_idx_map[_symbol])
+            elif _order['action'] == 'SELL':
+                # check if symbol is on the to sell list and its not protective SL order
+                if (_symbol in to_sell) and (_order['orderType'] == 'MKT'):
+                    to_sell.pop(to_sell_sym_idx_map[_symbol])
+        # At this point to_buy/to_sell lists are aware about currently placed orders
+
         # Place sell orders for held symbols that should be closed
-        ### BUG!!!
-        # This is now in loop. So if SELL order are not filled, updated to_sell will
-        # be exactly the same, and at this point you will send the same closing orders...
         self._execute_exit_signals(to_sell)
 
         # Place BUY orders and simultaneous protective TRAILING STOP LOSS orders
-        ### BUG!!!
-        # Same problem as above - if orders are still hanging, orders will be repeated
-        self.log.debug(f'To buy based on position sizing: {to_buy}')
         self._execute_entry_signals(to_buy)
 
         # Give time for trading execution, update portfolio status, place subsequent orders
         self.log.debug('Sleep for 1min to give placed (if any) orders some time')
         time.sleep(60) 
         
-        # Update account details
+        # Update account details (this will make available_cash and hold_symbols up-to-date)
         self.account_details = self.get_account_details()
-        self.log.debug(
-            'Updated account details: '
-            f'available_cash: {self.available_cash}, hold_symbols: {self.hold_symbols}, '
-            f'positions_cnts: {self.positions_cnts}',
-        )
+
         # Compare hold positions to those which supposed to be sold. Update to_sell
         # (New to_sell should be an intersection of held and to_sell)
         to_sell = list(set(self.hold_symbols).intersection(set(to_sell)))

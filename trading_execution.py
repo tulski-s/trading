@@ -28,7 +28,7 @@ class TradingExecutor():
         - in GBP
         - predefined universe
         - LSE and trading hours
-        - fixed stop loss % (`stop_loss_perc` is in %, i.e. 1% -> 1)
+        - fixed stop loss %
         - predefined postion sizing
         - you can not buy same symbol (order more shares of sth you alredy own)
         - etc.
@@ -42,7 +42,7 @@ class TradingExecutor():
         self.load_csv = load_csv
         self.signal_config = signal_config
         self.signal_lookback = signal_lookback
-        self.stop_loss_perc = stop_loss_perc/100.0
+        self.stop_loss_perc = stop_loss_perc/100.0  # `stop_loss_perc` is in %, i.e. 1% -> 1
         self.position_sizer = position_sizer
         # start IB App
         self.ib_app = IBAPIApp(
@@ -513,22 +513,3 @@ if __name__ == '__main__':
         ignore_tod_check=args.ignore_tod_check,
         ignore_sa_check=args.ignore_sa_check,
     )
-
-
-"""
-example signals[symbol] dataframe
-
-open   high     low  close     volume         obv  entry_long  exit_long  entry_short  exit_short  position
-date                                                                                                                    
-2020-08-06  608.6  614.8  595.80  610.0  1684018.0  -1684018.0         0.0        0.0          0.0         0.0         0
-2020-08-07  607.6  616.8  602.00  611.8  1382306.0   -301712.0         0.0        0.0          0.0         0.0         0
-2020-08-10  618.6  630.0  612.80  620.6  2190978.0   1889266.0         0.0        0.0          0.0         0.0         0
-2020-08-11  626.2  646.0  626.00  644.2  2867888.0   4757154.0         0.0        0.0          0.0         0.0         0
-2020-08-12  642.8  657.4  638.36  644.8  2556613.0   7313767.0         0.0        0.0          0.0         0.0         0
-...           ...    ...     ...    ...        ...         ...         ...        ...          ...         ...       ...
-2020-12-18  821.2  826.2  811.60  814.0  4888155.0  36496095.0         0.0        0.0          0.0         0.0         1
-2020-12-21  794.0  796.0  772.20  787.4  3221088.0  33275007.0         0.0        0.0          0.0         0.0         1
-2020-12-22  784.6  799.0  778.20  796.6  1766023.0  35041030.0         0.0        0.0          0.0         0.0         1
-2020-12-23  794.0  813.8  791.80  812.4  1273175.0  36314205.0         0.0        0.0          0.0         0.0         1
-2020-12-24  812.4  819.8  805.60  813.0   675017.0  36989222.0         0.0        0.0          0.0         0.0         1
-"""

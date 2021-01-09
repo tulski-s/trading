@@ -168,14 +168,14 @@ def main():
     print('Splitting data into train/test')
     train_data, test_data = helpers.split_into_subsets(signals, 0.5)
 
-    # set up
-    init_capital = 10000
-    risk_per_trade = 80
+    # set up (scale by 100 as prices are in GBX that is 1/100 of GBP)
+    init_capital = 10000*100
+    risk_per_trade = 80*100
     auto_stop_loss = 0.015
     volatility_lb = 14
     position_sizer = FixedRisk(
         fee_perc = 0,
-        min_fee = 6,
+        min_fee = 6*100,
         sort_type = 'rrr',
         risk_per_trade = risk_per_trade,
     )

@@ -25,7 +25,7 @@ class TradingExecutor():
     very specific trading strategy:
         - long only
         - stocks only
-        - in GBP
+        - in GBX (1/100 of GBP)
         - predefined universe
         - LSE and trading hours
         - fixed stop loss %
@@ -135,7 +135,12 @@ class TradingExecutor():
 
         # Place and monitor orders until everything is sold and bought
         while (len(to_sell) != 0) and (len(to_buy) != 0):
-            to_buy, to_sell = self._place_and_monitor_sell_buy(to_buy, to_sell)
+            self.log.debug(
+                'Enter `_place_and_monitor_sell_buy` with to_buy: {to_buy} and to_sell: {to_sell}'
+            )
+            to_buy, to_sell = self._place_and_monitor_sell_buy(
+                to_buy, to_sell, buy_candidates, last_signals_ds
+            )
 
         # Close trading for now
         self.log.debug(f'All thing are now sold and bough. Finish trading.')
@@ -152,7 +157,8 @@ class TradingExecutor():
 
     def get_account_details(self):
         portfolio_details = self.ib_app.get_portfolio_details()
-        self.available_cash = float(portfolio_details['TotalCashBalance_GBP'])
+        # NOTE: available_cash is converted into GBX, that is 1/100 GBP
+        self.available_cash = float(portfolio_details['TotalCashBalance_GBP']) * 100
         self.hold_symbols = []
         self.positions_cnts = {}
         for symbol, details in portfolio_details['positions'].items():
@@ -318,11 +324,14 @@ class TradingExecutor():
             self.log.debug(f'Placed SELL order for {shares_cnt} shares of {symbol}')
 
     def _execute_entry_signals(self, to_buy):
-        self.log.debug(f'Will open positions for following symbols: {[tb['symbol'] for tb in to_buy]}')
+        self.log.debug(f"Will open positions for following symbols: {[tb['symbol'] for tb in to_buy]}")
         for candidate in to_buy:
             symbol = candidate['symbol']
             if symbol in self.hold_symbols:
-                # You cannot make BUY order for symbols you already own 
+                self.log.debug((
+                    f"Skipping placing order for {symbol} as it is already bought. "
+                    'You cannot place BUY order for symbols you already own'
+                ))
                 continue
             contract = self.ib_app.get_contract(symbol=symbol)
             shares_cnt = candidate['shares_count']
@@ -349,11 +358,13 @@ class TradingExecutor():
                 f'{shares_cnt} shares of {symbol}'
             )
 
-    def _place_and_monitor_sell_buy(self, to_buy, to_sell):
+    def _place_and_monitor_sell_buy(self, to_buy, to_sell, buy_candidates, last_signals_ds):
         """
         Input:
-            to_buy:  list of candidates to buy (check struct in position sizer)
+            to_buy: filtered list of candidates to buy (check struct in position sizer)
             to_sell: list of symbols
+            buy_candidates: list of all candidates to buy
+            last_signals_ds: YYYY-MM-DD str indicating ds to use
         
         High-level flow:
             - This method is executed in loop until to_buy and to_sell are empty
@@ -381,6 +392,7 @@ class TradingExecutor():
         # [s1, s2, ...] -> {s1: 0, s2: 1, ...}
         to_sell_sym_idx_map = {s: idx for idx, s in enumerate(to_sell)}
         # (if there are opened orders already -> apporiatly remove elements from lists)
+        _opened_buy_symbols = []
         for order_id in opened_orders['orders']:
             _order = opened_orders[order_id]
             _symbol = _order['symbol']
@@ -388,10 +400,14 @@ class TradingExecutor():
             if _order['action'] == 'BUY':
                 if _symbol in to_buy_sym_idx_map.keys():
                     to_buy.pop(to_buy_sym_idx_map[_symbol])
+                    _opened_buy_symbols.append(_symbol)
             elif _order['action'] == 'SELL':
                 # check if symbol is on the to sell list and its not protective SL order
                 if (_symbol in to_sell) and (_order['orderType'] == 'MKT'):
                     to_sell.pop(to_sell_sym_idx_map[_symbol])
+        self.log.debug(
+            f"There are orders opened for following symbols right now: {_opened_buy_symbols}"
+        )
         # At this point to_buy/to_sell lists are aware about currently placed orders
 
         # Place sell orders for held symbols that should be closed
@@ -415,8 +431,10 @@ class TradingExecutor():
         # If there were things sold, then it is possible that you have more money to buy
         # Look again at candidates (exclude to_buy for which there were already orders sent)
         more_buy_candidates = [
-            c for c in buy_candidates if c['symbol'] not in [tb['symbol'] for tb in to_buy]
+            c for c in buy_candidates
+            if c['symbol'] not in ([tb['symbol'] for tb in to_buy] + _opened_buy_symbols)
         ]
+        self.log.debug(f'More possible candidates to BUY: {more_buy_candidates}')
         more_to_buy = self.position_sizer.decide_what_to_buy(
             self.available_cash,
             more_buy_candidates,
@@ -425,8 +443,9 @@ class TradingExecutor():
                 for c in more_buy_candidates
             }
         )
+        self.log.debug(f'Adding {more_to_buy} to the list of things to BUY')
         # Update list of shares to buy to include new symbols and exclude those already bought
-        to_buy = to_buy.extend(more_to_buy)
+        to_buy.extend(more_to_buy)
         to_buy = [tb for tb in to_buy if tb['symbol'] not in self.hold_symbols]
         return to_buy, to_sell
 

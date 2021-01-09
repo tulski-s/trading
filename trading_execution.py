@@ -461,9 +461,9 @@ def main(download_data=True, ib_port=None, debug=False, ignore_xe_check=False,
          ignore_tod_check=False, ignore_sa_check=False, lookback=None):
     position_sizer = FixedRisk(
         fee_perc = 0,
-        min_fee = 6,
+        min_fee = 6*100,
         sort_type = 'rrr',
-        risk_per_trade = 80,
+        risk_per_trade = 80*100,
     )
     executor = TradingExecutor(
         pricing_data_path='/Users/slaw/osobiste/trading/pricing_data',

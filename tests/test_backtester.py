@@ -142,6 +142,8 @@ def signals_test_stop_loss_1():
     dates = ['2010-09-28', '2010-09-29', '2010-09-30', '2010-10-01']
     signals_data = {
         'close': [100, 90, 80, 70],
+        'low': [100, 90, 80, 70],
+        'high': [100, 90, 80, 70],
         'entry_long': [1,0,0,0],
         'exit_long': [0,0,0,1],
         'entry_short': [0,0,0,0],
@@ -164,6 +166,8 @@ def signals_test_auto_stop_loss_1():
     dates = ['2010-09-28', '2010-09-29', '2010-09-30', '2010-10-01', '2010-10-02']
     signals_data = {
         'close': [100, 81, 120, 81, 50],
+        'low': [100, 81, 120, 81, 50],
+        'high': [100, 81, 120, 81, 50],
         'entry_long': [1,0,0,0,0],
         'exit_long': [0,0,0,0,1],
         'entry_short': [0,0,0,0,0],
@@ -728,4 +732,3 @@ def test_functional_backtester_auto_stop_loss_2(backtester_auto_sl):
     assert(backtester_auto_sl._available_money == expected_available_money)
     assert(backtester_auto_sl._net_account_value[ds_key] == expected_nav)
     assert(expected_trades == trades)
-

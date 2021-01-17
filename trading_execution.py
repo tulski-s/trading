@@ -136,7 +136,7 @@ class TradingExecutor():
         # Place and monitor orders until everything is sold and bought
         while (len(to_sell) != 0) and (len(to_buy) != 0):
             self.log.debug(
-                'Enter `_place_and_monitor_sell_buy` with to_buy: {to_buy} and to_sell: {to_sell}'
+                f'Enter `_place_and_monitor_sell_buy` with to_buy: {to_buy} and to_sell: {to_sell}'
             )
             to_buy, to_sell = self._place_and_monitor_sell_buy(
                 to_buy, to_sell, buy_candidates, last_signals_ds
@@ -305,7 +305,7 @@ class TradingExecutor():
                 )
         return to_sell, buy_candidates
 
-    def _execute_exit_signals(self, to_sell):
+    def _execute_exit_signals(self, to_sell, to_cancel):
         held_for_sell = [
             symbol for symbol in to_sell if symbol in self.hold_symbols
         ]
@@ -318,10 +318,15 @@ class TradingExecutor():
                 action='SELL',
                 quantity=shares_cnt,
                 orderType='MKT',
-                adaptive=True
+                adaptive=True,
+                tif='DAY'
             )
             self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, order)
             self.log.debug(f'Placed SELL order for {shares_cnt} shares of {symbol}')
+        self.log.debug(f'Will cancel following protective orders: {list(to_cancel.items())}')
+        for orderId, symbol in to_cancel.items():
+            self.ib_app.cancelOrder(orderId)
+            self.log.debug(f'Cancelled {shares_cnt} ({symbol})')
 
     def _execute_entry_signals(self, to_buy):
         self.log.debug(f"Will open positions for following symbols: {[tb['symbol'] for tb in to_buy]}")
@@ -340,12 +345,13 @@ class TradingExecutor():
                 action='BUY',
                 quantity=shares_cnt,
                 orderType='MKT',
-                adaptive=True
+                adaptive=True,
+                tif='DAY'
             )
             self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, buy_order)
             self.log.debug(f'Placed BUY order for {shares_cnt} shares of {symbol}')
             # protective TRAILING STOP LOSS sell order
-            _stop_loss = int(self.stop_loss_perc*100)
+            _stop_loss = self.stop_loss_perc*100
             sell_order = self.ib_app.create_order(
                 action='SELL',
                 quantity=shares_cnt,
@@ -391,8 +397,9 @@ class TradingExecutor():
         to_buy_sym_idx_map = {s: idx for idx, s in enumerate([tb['symbol'] for tb in to_buy])}
         # [s1, s2, ...] -> {s1: 0, s2: 1, ...}
         to_sell_sym_idx_map = {s: idx for idx, s in enumerate(to_sell)}
-        # (if there are opened orders already -> apporiatly remove elements from lists)
         _opened_buy_symbols = []
+        _protective_to_cancel = {}
+        # (if there are opened orders already -> apporiatly remove elements from lists)
         for order_id in opened_orders['orders']:
             _order = opened_orders[order_id]
             _symbol = _order['symbol']
@@ -405,13 +412,17 @@ class TradingExecutor():
                 # check if symbol is on the to sell list and its not protective SL order
                 if (_symbol in to_sell) and (_order['orderType'] == 'MKT'):
                     to_sell.pop(to_sell_sym_idx_map[_symbol])
+                # get protective SL orders that should be cancelled while selling
+                elif (_symbol in to_sell) and (_order['orderType'] == 'TRAIL'):
+                    _protective_to_cancel[order_id] = _symbol
+
         self.log.debug(
             f"There are orders opened for following symbols right now: {_opened_buy_symbols}"
         )
         # At this point to_buy/to_sell lists are aware about currently placed orders
 
         # Place sell orders for held symbols that should be closed
-        self._execute_exit_signals(to_sell)
+        self._execute_exit_signals(to_sell, _protective_to_cancel)
 
         # Place BUY orders and simultaneous protective TRAILING STOP LOSS orders
         self._execute_entry_signals(to_buy)
@@ -447,6 +458,7 @@ class TradingExecutor():
         # Update list of shares to buy to include new symbols and exclude those already bought
         to_buy.extend(more_to_buy)
         to_buy = [tb for tb in to_buy if tb['symbol'] not in self.hold_symbols]
+        self.log.debug(f'End of execution cycle: to_buy: {to_buy}, to_sell: {to_sell}')
         return to_buy, to_sell
 
     def _check_ib_env(self):
@@ -463,7 +475,7 @@ def main(download_data=True, ib_port=None, debug=False, ignore_xe_check=False,
         fee_perc = 0,
         min_fee = 6*100,
         sort_type = 'rrr',
-        risk_per_trade = 80*100,
+        risk_per_trade = 125*100,
     )
     executor = TradingExecutor(
         pricing_data_path='/Users/slaw/osobiste/trading/pricing_data',
@@ -473,6 +485,7 @@ def main(download_data=True, ib_port=None, debug=False, ignore_xe_check=False,
         signal_lookback=lookback,
         ib_port=ib_port,
         debug=debug,
+        stop_loss_perc=1.5,
     )
     executor.trade(
         ignore_xe_check=ignore_xe_check,

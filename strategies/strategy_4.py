@@ -38,10 +38,10 @@ long_only_s4_config = {
             'func': rules.moving_average
         },
         {
-            'id': 'filter_07_lb3',
+            'id': 'filter_07_lb2',
             'type': 'simple',
             'ts': 'close',
-            'lookback': 3,
+            'lookback': 2,
             'params': {
                 'b': 0.07,
             },
@@ -83,16 +83,16 @@ long_only_s4_config = {
             }
         },
         {
-            'id': 'long_only_filter_07_lb3',
+            'id': 'long_only_filter_07_lb2',
             'type': 'convoluted',
-            'simple_rules': ['filter_07_lb3'],
+            'simple_rules': ['filter_07_lb2'],
             'aggregation_type': 'state-based',
             'aggregation_params': {
                 'long': [
-                    {'filter_07_lb3': 1}
+                    {'filter_07_lb2': 1}
                 ],
                 'neutral': [
-                    {'filter_07_lb3': 0},
+                    {'filter_07_lb2': 0},
                 ]
             }
         },
@@ -130,7 +130,7 @@ long_only_s4_config = {
         'type': 'learning',
         'strategy_rules': [
             'long_only_oba_s_n2',
-            'long_only_filter_07_lb3',
+            'long_only_filter_07_lb2',
             'long_only_rev_filter_5_lb7',
             'long_only_ma_S_n25m20',
         ],
@@ -170,7 +170,7 @@ def main():
 
     # set up (scale by 100 as prices are in GBX that is 1/100 of GBP)
     init_capital = 10000*100
-    risk_per_trade = 80*100
+    risk_per_trade = 125*100
     auto_stop_loss = 0.015
     volatility_lb = 14
     position_sizer = FixedRisk(
@@ -178,6 +178,7 @@ def main():
         min_fee = 6*100,
         sort_type = 'rrr',
         risk_per_trade = risk_per_trade,
+        #allow_partial=True,
     )
     test_backtester = Backtester(
         test_data,
@@ -192,6 +193,9 @@ def main():
     print('Starting backtest')
     test_results_df, test_trades = test_backtester.run()
     results.performance_report(test_results_df, test_trades)
+
+    #print(test_trades)
+    print(test_results_df.tail(100))
 
     print('Done!')
 

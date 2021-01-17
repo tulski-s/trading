@@ -12,7 +12,8 @@ class AccountBankruptError(Exception):
 
 class Backtester():
     def __init__(self, signals, price_label='close', init_capital=10000, logger=None, debug=False, 
-                 position_sizer=None, stop_loss=False, auto_stop_loss=False, volatility_lb=14):
+                 position_sizer=None, stop_loss=False, auto_stop_loss=False, volatility_lb=14,
+                 high_label='high', low_label='low'):
         """
         *signals* - dictionary with symbols (key) and dataframes (values) with pricing data and enter/exit signals. 
         Column names for signals  are expected to be: entry_long, exit_long, entry_short, exit_short. Signals should 
@@ -32,6 +33,8 @@ class Backtester():
         self.volatility_lb = volatility_lb
         self.log = setup_logging(logger=logger, debug=debug)
         self.signals = self._prepare_signal(signals)
+        self.high_label = high_label
+        self.low_label = low_label
 
     def run(self, test_days=None):
         self._reset_backtest_state()
@@ -81,12 +84,18 @@ class Backtester():
                 if (self.stop_loss == True) or (self.auto_stop_loss != False):
                     stop_loss_price = self.signals[symbol]['stop_loss'][ds]
                     trade_type = self._trades[self._owned_shares[symbol]['trx_id']]['type']
-                    if (trade_type == 'long') and (current_sym_price <= stop_loss_price):
-                        self.log.debug('\t\t LONG STOP LOSS TRIGGERED - EXITING')
+                    # For SL one needs to look at high/low prices. These show daily range of price
+                    # variation. SL may be executed anytime during session.
+                    price_long_sl = self._get_price(symbol, ds, label=self.low_label)
+                    price_short_sl = self._get_price(symbol, ds, label=self.high_label)
+                    # During session market price got below SL at least for some time 
+                    if (trade_type == 'long') and (price_long_sl <= stop_loss_price):
+                        self.log.debug(f'\t\t LONG STOP LOSS TRIGGERED - EXITING (low: {price_long_sl})')
                         self._sell(symbol, stop_loss_price, ds, 'long')
                         _sold = 1
-                    elif (trade_type == 'short') and (current_sym_price >= stop_loss_price):
-                        self.log.debug('\t\t SHORT STOP LOSS TRIGGERED - EXITING')
+                    # During session market price got above SL at least for some time
+                    elif (trade_type == 'short') and (price_short_sl >= stop_loss_price):
+                        self.log.debug(f'\t\t SHORT STOP LOSS TRIGGERED - EXITING (high : {price_short_sl})')
                         self._sell(symbol, stop_loss_price, ds, 'short')
                         _sold = 1
                 # 1) if stop loss does not exists: check usual exit signal
@@ -311,12 +320,14 @@ class Backtester():
     def _get_money_from_short(self):
         return sum([m for m in self._money_from_short.values()])
 
-    def _get_price(self, symbol, ds):
+    def _get_price(self, symbol, ds, label=None):
         """
         Do not use directly. If ds is not available it uses backup price. This backup price may not be
         avialable. As its being constantly overwritten it also depends on backtest execution.
         """
-        price = self.signals[symbol][self.price_label].get(ds)
+        if label == None:
+            label = self.price_label
+        price = self.signals[symbol][label].get(ds)
         if price == None:
             price = self._backup_prices[symbol][0]
         return price

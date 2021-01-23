@@ -230,8 +230,14 @@ class FixedRisk(PositionSize):
             if available_money_at_time < theoretical_trx_value:
                 # Implement here allow_partial fill
                 if self.allow_partial == True:
-                    shares_count = self.get_shares_count(available_money_at_time, price)
+                    # -1 as safety guard
+                    shares_count = self.get_shares_count(available_money_at_time, price) - 1
+                    self.log.debug(f'Partial order from Position Sizer: {sym}:{shares_count}')
                 else:
+                    self.log.debug((
+                        f'Not enough money to fully buy {sym}. '
+                        f'Need: {theoretical_trx_value}, have: {available_money_at_time}'
+                    ))
                     continue
             else:
                 shares_count = self.get_shares_count(theoretical_trx_value, price)
@@ -251,6 +257,7 @@ class FixedRisk(PositionSize):
         for candidate in self.sort(all_candidates_processed, volatility=volatility, rrr=rrrs):
             remaining_money = available_money_at_time - (candidate['trx_value'] + candidate['fee'])
             if remaining_money > 0:
+                self._buying_decision_msg(candidate['shares_count'], candidate['symbol'])
                 symbols_to_buy.append(candidate)
                 available_money_at_time = remaining_money
             else:

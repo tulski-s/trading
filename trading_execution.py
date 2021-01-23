@@ -44,6 +44,7 @@ class TradingExecutor():
         self.signal_lookback = signal_lookback
         self.stop_loss_perc = stop_loss_perc/100.0  # `stop_loss_perc` is in %, i.e. 1% -> 1
         self.position_sizer = position_sizer
+        self._to_set_stop_loss = []
         # start IB App
         self.ib_app = IBAPIApp(
             port=ib_port,
@@ -71,12 +72,8 @@ class TradingExecutor():
         - Generates signals again with more up to date data from investpy?
             - This is open question. Not sure if it makes sense right now
         - Do things after session is closed
-            - NOT IMPLEMENTED YET
-            - it will:
-                - Cancel not filled buy orders. Its lost opportunity. That may happen. 
-                  Better that keeping MKT order and next day executionis at the open price
-                - Send an alert to me in case there is open sell order (any kind) that
-                  should be filled but it's not
+            - Set protective stop loss orders
+            - [P3] Cancel not filled buy orders
         """
         # Check if exchange is open
         if ignore_xe_check == False:
@@ -134,7 +131,7 @@ class TradingExecutor():
         self.log.debug(f'Symbols/shares to buy based on position sizing: {to_buy}')
 
         # Place and monitor orders until everything is sold and bought
-        while (len(to_sell) != 0) and (len(to_buy) != 0):
+        while (len(to_sell) != 0) or (len(to_buy) != 0):
             self.log.debug(
                 f'Enter `_place_and_monitor_sell_buy` with to_buy: {to_buy} and to_sell: {to_sell}'
             )
@@ -142,10 +139,15 @@ class TradingExecutor():
                 to_buy, to_sell, buy_candidates, last_signals_ds
             )
 
-        # Close trading for now
-        self.log.debug(f'All thing are now sold and bough. Finish trading.')
-        # That will be handled differently later on
-        return None
+        # Wait until session is closed to place protective orders at a close price
+        while (self._now().hour < 16) and (self._now().minute < 30):
+            time.sleep(60*5)
+            self.log.debug(f'Waiting for session to close (16:30). Now is: {self._now()}')
+        self._place_protective_orders()
+
+        # Close trading
+        self.log.debug(f'All thing are now sold and bough - trading finished.')
+        return
 
     def start_session(self):
         self.log.debug('Starting session!')
@@ -207,7 +209,7 @@ class TradingExecutor():
         if hour < 8:
             self.log.debug("Trading session is closed: LSE is opens at 8am")
             return False
-        if hour > 16 and now.minute > 30:
+        if hour >= 16 and now.minute > 30:
             self.log.debug("Trading session is closed: LSE is closes at 4:30pm")
             return False
         # session is open
@@ -350,18 +352,27 @@ class TradingExecutor():
             )
             self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, buy_order)
             self.log.debug(f'Placed BUY order for {shares_cnt} shares of {symbol}')
-            # protective TRAILING STOP LOSS sell order
-            _stop_loss = self.stop_loss_perc*100
+            self._to_set_stop_loss.append({
+                'symbol': symbol, 'cnt': shares_cnt
+            })
+
+    def _place_protective_orders(self):
+        self.log.debug(
+            f"Stop Loss orders execution: {[s['symbol'] for s in self._to_set_stop_loss]}"
+        )
+        _stop_loss = self.stop_loss_perc*100
+        for s in self._to_set_stop_loss:
+            contract = self.ib_app.get_contract(symbol=s['symbol'])
             sell_order = self.ib_app.create_order(
                 action='SELL',
-                quantity=shares_cnt,
+                quantity=s['shares_cnt'],
                 orderType='TRAIL',
                 trailingPercent=_stop_loss,
             )
             self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, sell_order)
             self.log.debug(
-                f'Placed protective sell Stop Loss ({_stop_loss}%) order for ' 
-                f'{shares_cnt} shares of {symbol}'
+                f"Placed protective sell Stop Loss ({_stop_loss}%) order for "
+                f"{s['shares_cnt']} shares of {s['symbol']}"
             )
 
     def _place_and_monitor_sell_buy(self, to_buy, to_sell, buy_candidates, last_signals_ds):
@@ -428,8 +439,8 @@ class TradingExecutor():
         self._execute_entry_signals(to_buy)
 
         # Give time for trading execution, update portfolio status, place subsequent orders
-        self.log.debug('Sleep for 1min to give placed (if any) orders some time')
-        time.sleep(60) 
+        self.log.debug('Sleep for 2mins to give placed (if any) orders some time')
+        time.sleep(120)
         
         # Update account details (this will make available_cash and hold_symbols up-to-date)
         self.account_details = self.get_account_details()
@@ -476,6 +487,8 @@ def main(download_data=True, ib_port=None, debug=False, ignore_xe_check=False,
         min_fee = 6*100,
         sort_type = 'rrr',
         risk_per_trade = 125*100,
+        debug=debug,
+        allow_partial=True,
     )
     executor = TradingExecutor(
         pricing_data_path='/Users/slaw/osobiste/trading/pricing_data',

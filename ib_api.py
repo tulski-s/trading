@@ -223,7 +223,7 @@ class IBAPIApp(IBAPIWrapper, EClient):
         return contract
 
     def create_order(self, action=None, quantity=None, orderType=None, lmtPrice=None, adaptive=False, adaptivePriority=None,
-        trailingPercent=None, trailStopPrice=None):
+        trailingPercent=None, trailStopPrice=None, tif='GTC'):
         """
         Creates order definition.
         Base order types: (https://www.interactivebrokers.co.uk/en/index.php?f=41254)
@@ -243,11 +243,16 @@ class IBAPIApp(IBAPIWrapper, EClient):
             - "Adaptive Limit", "Adaptive Market":
                 - https://interactivebrokers.github.io/tws-api/ibalgos.html#adaptive
                 - adaptivePriority: Urgent, Normal, Patient
+
+        tif:
+            The time in force. Valid values are: DAY, GTC and more. By default its GTC that is "Good until canceled"
+            Details in https://interactivebrokers.github.io/tws-api/classIBApi_1_1Order.html#a6b82712a718127487631727db08f67d4)
         """
         order = Order()
         order.action = action
         order.totalQuantity = quantity
         order.orderType = orderType
+        order.tif = tif
         if lmtPrice != None:
             order.lmtPrice = lmtPrice
         if trailingPercent != None:
@@ -436,11 +441,11 @@ def main(test_orders=False, debug=True):
         # Trailing Stop Loss
         print('Place SL order')
         sl_order = app.create_order(
-            action='SELL', quantity=10, orderType='TRAIL', trailingPercent=1
+            action='SELL', quantity=10, orderType='TRAIL', trailingPercent=1.5
         )
         app.placeOrder(
             app.nextOrderId(),  # orderId
-            contracts['ADM'],   # Contract
+            contracts['III'],   # Contract
             sl_order,           # Order
         )
     time.sleep(1)

@@ -140,9 +140,9 @@ class TradingExecutor():
             )
 
         # Wait until session is closed to place protective orders at a close price
-        while (self._now().hour < 16) and (self._now().minute < 30):
-            time.sleep(60*5)
+        while not ((self._now().hour >= 16) and (self._now().minute >= 30)):
             self.log.debug(f'Waiting for session to close (16:30). Now is: {self._now()}')
+            time.sleep(60*5)
         self._place_protective_orders()
 
         # Close trading
@@ -249,7 +249,7 @@ class TradingExecutor():
         lse_data = LSEData(pricing_data_path=self.pricing_data_path)
         symbols = lse_data.indicies_stocks['FTSE100']
         if load_csv == False:
-            lse_data.download_data_to_csv(symbols=symbols)
+            lse_data.incremental_download_to_csv(symbols=symbols)
         # NOTE: Lookback may impact consistency of generated signals. E.g. if for signal
         # one uses some sort of day-over-day calculations (e.g. OBV) that may cause
         # same date to have different signal depending on the run date 
@@ -353,7 +353,7 @@ class TradingExecutor():
             self.ib_app.placeOrder(self.ib_app.nextOrderId(), contract, buy_order)
             self.log.debug(f'Placed BUY order for {shares_cnt} shares of {symbol}')
             self._to_set_stop_loss.append({
-                'symbol': symbol, 'cnt': shares_cnt
+                'symbol': symbol, 'shares_cnt': shares_cnt
             })
 
     def _place_protective_orders(self):
@@ -558,3 +558,6 @@ if __name__ == '__main__':
         ignore_tod_check=args.ignore_tod_check,
         ignore_sa_check=args.ignore_sa_check,
     )
+
+
+

@@ -450,24 +450,28 @@ class TradingExecutor():
         to_sell = list(set(self.hold_symbols).intersection(set(to_sell)))
         self.log.debug(f'Remaining symbols to sell: {to_sell}')
 
-        # If there were things sold, then it is possible that you have more money to buy
-        # Look again at candidates (exclude to_buy for which there were already orders sent)
-        more_buy_candidates = [
-            c for c in buy_candidates
-            if c['symbol'] not in ([tb['symbol'] for tb in to_buy] + _opened_buy_symbols)
-        ]
-        self.log.debug(f'More possible candidates to BUY: {more_buy_candidates}')
-        more_to_buy = self.position_sizer.decide_what_to_buy(
-            self.available_cash,
-            more_buy_candidates,
-            volatility={
-                c['symbol']: self.signals[c['symbol']]['volatility'][last_signals_ds] 
-                for c in more_buy_candidates
-            }
-        )
-        self.log.debug(f'Adding {more_to_buy} to the list of things to BUY')
-        # Update list of shares to buy to include new symbols and exclude those already bought
-        to_buy.extend(more_to_buy)
+        # If there were things sold, then it is possible that you have more money (>1000 GBX) 
+        # to buy. Look again at candidates (exclude to_buy for which there were already 
+        # orders sent). Note, exclude symbols already bought and held
+        if self.available_cash > 1000:
+            more_buy_candidates = [
+                c for c in buy_candidates
+                if c['symbol'] not in (
+                    [tb['symbol'] for tb in to_buy] + _opened_buy_symbols + self.hold_symbols
+                )
+            ]
+            self.log.debug(f'More possible candidates to BUY: {more_buy_candidates}')
+            more_to_buy = self.position_sizer.decide_what_to_buy(
+                self.available_cash,
+                more_buy_candidates,
+                volatility={
+                    c['symbol']: self.signals[c['symbol']]['volatility'][last_signals_ds] 
+                    for c in more_buy_candidates
+                }
+            )
+            self.log.debug(f'Adding {more_to_buy} to the list of things to BUY')
+            # Update list of shares to buy to include new symbols and exclude those already bought
+            to_buy.extend(more_to_buy)
         to_buy = [tb for tb in to_buy if tb['symbol'] not in self.hold_symbols]
         self.log.debug(f'End of execution cycle: to_buy: {to_buy}, to_sell: {to_sell}')
         return to_buy, to_sell

@@ -56,6 +56,8 @@ class PositionSize(metaclass=ABCMeta):
         return _candidates
 
     def get_shares_count(self, money, price):
+        if money <= 0:
+            return 0
         return money // (price + (price*self.fee_perc))
 
     def define_candidate(self, symbol=None, entry_type=None, price=None, stop_loss=None):
@@ -230,13 +232,17 @@ class FixedRisk(PositionSize):
             if available_money_at_time < theoretical_trx_value:
                 # Implement here allow_partial fill
                 if self.allow_partial == True:
-                    # -1 as safety guard
-                    shares_count = self.get_shares_count(available_money_at_time, price) - 1
+                    # use only 80% of available money. 10% is safety buffer for execution slippage
+                    money_for_partial = available_money_at_time*0.8
+                    shares_count = self.get_shares_count(money_for_partial, price)
+                    if shares_count == 0:
+                        self.log.debug(f'Got 0 shares count for {sym}. No buy.')
+                        continue
                     self.log.debug(f'Partial order from Position Sizer: {sym}:{shares_count}')
                 else:
                     self.log.debug((
                         f'Not enough money to fully buy {sym}. '
-                        f'Need: {theoretical_trx_value}, have: {available_money_at_time}'
+                        f'Need: {theoretical_trx_value}, have: {money_for_partial}'
                     ))
                     continue
             else:

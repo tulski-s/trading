@@ -231,9 +231,9 @@ class FixedRisk(PositionSize):
             theoretical_trx_value = (self.risk_per_trade//value_at_risk_per_share) * price
             if available_money_at_time < theoretical_trx_value:
                 # Implement here allow_partial fill
+                money_for_partial = available_money_at_time*0.8
                 if self.allow_partial == True:
                     # use only 80% of available money. 10% is safety buffer for execution slippage
-                    money_for_partial = available_money_at_time*0.8
                     shares_count = self.get_shares_count(money_for_partial, price)
                     if shares_count == 0:
                         self.log.debug(f'Got 0 shares count for {sym}. No buy.')

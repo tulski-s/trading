@@ -257,7 +257,10 @@ class FixedRisk(PositionSize):
                 continue
             real_trx_value = shares_count*price
             expected_fee = self.calculate_fee(real_trx_value)
-            all_candidates_processed.append(self._define_symbol_to_buy(candidate, shares_count, real_trx_value, expected_fee))
+            _sym_to_buy = self._define_symbol_to_buy(candidate, shares_count, real_trx_value, expected_fee)
+            if (candidate['entry_type'] == 'long') and (_sym_to_buy['trx_value'] < 0):
+                raise ValueError('While going long, trx_value cannot be negative')
+            all_candidates_processed.append(_sym_to_buy)
         # final pass based on appropriate sorting
         symbols_to_buy = []
         for candidate in self.sort(all_candidates_processed, volatility=volatility, rrr=rrrs):

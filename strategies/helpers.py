@@ -155,7 +155,7 @@ def roc_oscillator(df_org, days=None, col=None):
 
 
 def simple_ma(df_org, days=None, col=None):
-    # Simple wrapper around pandas rollign to gfet simple moving average 
+    # Simple wrapper around pandas rollign to get simple moving average 
     df = df_org.copy()
     df.loc[:, f'sma{days}'] = df[col].rolling(window=days).mean()
     return df[f'sma{days}']

@@ -11,7 +11,7 @@ ftse_100 = [
   {
     "name": "Admiral Group",
     "symbol": "ADML",
-    "sector": "Nonlife Insurance",
+    "sector": "Insurance",
     "IB": "ADM"
   },
   {
@@ -64,7 +64,7 @@ ftse_100 = [
   {
     "name": "Aviva",
     "symbol": "AV",
-    "sector": "Life Insurance",
+    "sector": "Insurance",
     "IB": "AV."
   },
   {
@@ -124,7 +124,7 @@ ftse_100 = [
   {
     "name": "BT Group",
     "symbol": "BT",
-    "sector": "Fixed Line Telecommunications",
+    "sector": "Telecommunications",
     "IB":"BT.A"
   },
   {
@@ -178,7 +178,7 @@ ftse_100 = [
   {
     "name": "Evraz",
     "symbol": "EVRE",
-    "sector": "Industrial Metals & Mining",
+    "sector": "Metals & Mining",
     "IB": "EVR"
   },
   {
@@ -202,7 +202,7 @@ ftse_100 = [
   {
     "name": "Fresnillo",
     "symbol": "FRES",
-    "sector": "Mining",
+    "sector": "Metals & Mining",
     "IB": "FRES"
   },
   {
@@ -214,7 +214,7 @@ ftse_100 = [
   {
     "name": "Glencore",
     "symbol": "GLEN",
-    "sector": "Mining",
+    "sector": "Metals & Mining",
     "IB": "GLEN"
   },
   {
@@ -304,7 +304,7 @@ ftse_100 = [
   {
     "name": "Just Eat Takeaway",
     "symbol": "JE",
-    "sector": "Software and Computer Services",
+    "sector": "Software & Computer Services",
     "IB": "JET"
   },
   {
@@ -322,7 +322,7 @@ ftse_100 = [
   {
     "name": "Legal & General",
     "symbol": "LGEN",
-    "sector": "Life Insurance",
+    "sector": "Insurance",
     "IB": "LGEN"
   },
   {
@@ -393,7 +393,7 @@ ftse_100 = [
   {
     "name": "Pennon Group",
     "symbol": "PNN",
-    "sector": "Water",
+    "sector": "Gas, Water & Multi-utilities",
     "IB": "PNN"
   },
   {
@@ -405,19 +405,19 @@ ftse_100 = [
   {
     "name": "Phoenix Group",
     "symbol": "PHNX",
-    "sector": "Life Insurance",
+    "sector": "Insurance",
     "IB": "PHNX"
   },
   {
     "name": "Polymetal International",
     "symbol": "POLYP",
-    "sector": "Precious Metals and Mining",
+    "sector": "Metals & Mining",
     "IB": "POLY"
   },
   {
     "name": "Prudential plc",
     "symbol": "PRU",
-    "sector": "Life Insurance",
+    "sector": "Insurance",
     "IB": "PRU"
   },
   {
@@ -465,7 +465,7 @@ ftse_100 = [
   {
     "name": "RSA Insurance Group",
     "symbol": "RSA",
-    "sector": "Nonlife Insurance",
+    "sector": "Insurance",
     "IB": "RSA"
   },
   {
@@ -531,13 +531,13 @@ ftse_100 = [
   {
     "name": "Spirax-Sarco Engineering",
     "symbol": "SPX",
-    "sector": "Industrial Engineering",
+    "sector": "General Industrials",
     "IB": "SPX"
   },
   {
     "name": "SSE plc",
     "symbol": "SSE",
-    "sector": "Electricity",
+    "sector": "Gas, Water & Multi-utilities",
     "IB": "SSE"
   },
   {
@@ -555,7 +555,7 @@ ftse_100 = [
   {
     "name": "St. James's Place plc",
     "symbol": "SJP",
-    "sector": "Life Insurance",
+    "sector": "Insurance",
     "IB": "STJ"
   },
   {
@@ -585,13 +585,13 @@ ftse_100 = [
   {
     "name": "Vodafone Group",
     "symbol": "VOD",
-    "sector": "Mobile Telecommunications",
+    "sector": "Telecommunications",
     "IB": "VOD"
   },
   {
     "name": "Whitbread",
     "symbol": "WTB",
-    "sector": "Retail hospitality",
+    "sector": "Travel & Leisure",
     "IB": "WTB"
   },
   {

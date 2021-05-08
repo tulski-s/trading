@@ -139,8 +139,8 @@ class TradingExecutor():
                 to_buy, to_sell, buy_candidates, last_signals_ds
             )
 
-        # Wait until session is closed to place protective orders at a close price
-        while not ((self._now().hour >= 16) and (self._now().minute >= 30)):
+        # Wait until session is closed for half an hour to place protective orders at a close price
+        while not ((self._now().hour >= 17) and (self._now().minute >= 0)):
             self.log.debug(f'Waiting for session to close (16:30). Now is: {self._now()}')
             time.sleep(60*5)
         self._place_protective_orders()
